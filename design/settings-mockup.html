@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Settings – feed reader mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<style>
+:root{--bg:#EEEAE1;--ink:#141413;--mute:#6B665C;--line:rgba(20,20,19,.16);--card:#D6CFBF;--acc:#E4472B}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10100F;--ink:#F1EDE4;--mute:#9C978B;--line:rgba(241,237,228,.18);--card:#242320}}
+:root[data-theme="dark"]{--bg:#10100F;--ink:#F1EDE4;--mute:#9C978B;--line:rgba(241,237,228,.18);--card:#242320}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:"Archivo","Helvetica Neue",Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0}
+.app{max-width:430px;min-height:100vh;margin:0 auto}
+header{padding:14px 20px;border-bottom:1px solid var(--line);padding-top:calc(14px + env(safe-area-inset-top))}
+.back{display:block;width:12px;height:12px;margin:8px 0 8px 6px;border-left:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);transform:rotate(45deg)}
+h1{font-size:40px;line-height:.96;text-transform:uppercase;font-weight:800;font-stretch:112%;letter-spacing:-.02em;padding:26px 20px 8px}
+.sec{padding:30px 20px 10px;font-size:13px;color:var(--mute)}
+.set{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:16px 20px;border-top:1px solid var(--line);min-height:68px}
+.set.off{opacity:.4;pointer-events:none}
+.lab{display:flex;flex-direction:column;gap:4px;font-size:17px;font-weight:500}
+.lab small{font-size:13px;font-weight:400;color:var(--mute)}
+.seg{display:inline-flex;border:1px solid var(--ink);border-radius:999px;overflow:hidden}
+.seg button{padding:9px 15px;font-size:13px}
+.seg button.on{background:var(--ink);color:var(--bg)}
+.step{display:inline-flex;gap:8px}
+.step button{border:1px solid var(--ink);border-radius:999px;padding:9px 16px;font-size:13px}
+.step button:disabled{opacity:.3}
+.sw{position:relative;width:48px;height:28px;border:1px solid var(--ink);border-radius:999px}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--ink);transition:transform .15s}
+.sw[aria-checked="true"]{background:var(--ink)}
+.sw[aria-checked="true"]::after{background:var(--bg);transform:translateX(20px)}
+.prev{padding:4px 20px 22px;line-height:1.6;color:var(--ink)}
+.note{padding:0 20px 18px;font-size:13px;line-height:1.4;color:var(--mute);max-width:42ch}
+.link{width:100%;text-align:left}
+.chev{width:9px;height:9px;border-right:1.5px solid var(--ink);border-top:1.5px solid var(--ink);transform:rotate(45deg);margin-right:4px}
+.val{font-size:14px;color:var(--mute)}
+.end{border-top:1px solid var(--line);margin-bottom:40px}
+</style>
+</head>
+<body>
+<div class="app">
+<header><a class="back" href="#" aria-label="Back"></a></header>
+<h1>Settings</h1>
+
+<p class="sec">Appearance</p>
+<div class="set"><span class="lab">Theme</span>
+  <div class="seg" data-g="theme"><button data-v="auto" class="on">Auto</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
+<div class="set"><span class="lab">Text size<small>For reading articles</small></span>
+  <div class="step"><button id="dec" aria-label="Smaller text">A−</button><button id="inc" aria-label="Larger text">A+</button></div></div>
+<p class="prev" id="prev">Soft shadows, long exposures and no studio strobes. The results are darker, grainier and strangely calm.</p>
+
+<p class="sec">Home</p>
+<div class="set"><span class="lab">Layout</span>
+  <div class="seg" data-g="layout"><button data-v="cards" class="on">Cards</button><button data-v="compact">Compact</button></div></div>
+
+<p class="sec">Refresh</p>
+<div class="set"><span class="lab">Check in the background<small>So new articles are ready when you open the app</small></span>
+  <button class="sw" id="bg" role="switch" aria-checked="true" aria-label="Check in the background"></button></div>
+<div class="set" id="freq"><span class="lab">How often</span>
+  <div class="seg" data-g="freq"><button data-v="30">30 min</button><button data-v="60" class="on">1 hr</button><button data-v="180">3 hr</button></div></div>
+<div class="set" id="wifi"><span class="lab">Wi-Fi only</span>
+  <button class="sw" role="switch" aria-checked="false" aria-label="Wi-Fi only"></button></div>
+<p class="note">These are targets. Android decides the exact timing to save battery, so a check can run later than you set.</p>
+
+<p class="sec">Your sources</p>
+<button class="set link"><span class="lab">Import sources<small>From an OPML file</small></span><i class="chev"></i></button>
+<button class="set link"><span class="lab">Export sources<small>Save your list as an OPML file</small></span><i class="chev"></i></button>
+
+<p class="sec">About</p>
+<div class="set"><span class="lab">Version</span><span class="val">1.0</span></div>
+<div class="end"></div>
+</div>
+<script>
+const $=s=>document.querySelector(s), root=document.documentElement;
+document.querySelectorAll(".seg").forEach(g=>g.addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  g.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
+  if(g.dataset.g==="theme"){b.dataset.v==="auto"?root.removeAttribute("data-theme"):root.dataset.theme=b.dataset.v}
+}));
+document.querySelectorAll(".sw").forEach(s=>s.addEventListener("click",()=>{
+  s.setAttribute("aria-checked",s.getAttribute("aria-checked")!=="true");
+  if(s.id==="bg"){const on=s.getAttribute("aria-checked")==="true";$("#freq").classList.toggle("off",!on);$("#wifi").classList.toggle("off",!on)}
+}));
+const sizes=[16,18,20,23]; let si=1;
+function setSize(i){si=Math.max(0,Math.min(sizes.length-1,i));$("#prev").style.fontSize=sizes[si]+"px";$("#dec").disabled=si===0;$("#inc").disabled=si===sizes.length-1}
+$("#dec").onclick=()=>setSize(si-1); $("#inc").onclick=()=>setSize(si+1); setSize(1);
+</script>
+<style id="motion">
+/* MOTION TOKENS
+   press .18s spring | content enter .35s ease-out, 40ms stagger | pop .4s spring | unfold .35s ease-out
+   switches and sliding pills .3s | reduced motion: all off */
+:root{--ease:cubic-bezier(.2,.8,.2,1);--spring:cubic-bezier(.34,1.56,.64,1)}
+*{-webkit-tap-highlight-color:transparent}
+button,.pill,.chip{transition:transform .18s var(--spring),background-color .2s,color .2s,border-color .2s,opacity .2s}
+button:not(:disabled):active,a.pill:active{transform:scale(.96)}
+.row:active,.src:active,.set.link:active{transform:scale(.985)}
+.row,.src,.set.link{transition:transform .18s var(--spring),opacity .35s}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+@keyframes pop{0%{transform:scale(.6)}50%{transform:scale(1.3)}100%{transform:scale(1)}}
+@keyframes unfold{from{opacity:0;transform:translateY(-8px) scale(.97)}}
+@keyframes titleUp{from{opacity:0;transform:translateY(40px)}}
+.in{animation:rise .35s var(--ease) backwards;animation-delay:calc(var(--i,0)*40ms)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+
+.seg{position:relative}
+.seg .ind{position:absolute;top:0;bottom:0;background:var(--ink);border-radius:999px;transition:left .32s var(--ease),width .32s var(--ease)}
+.seg button{position:relative;z-index:1}
+.seg button.on{background:none;color:var(--bg)}
+.sw{transition:background-color .2s,transform .18s var(--spring)}
+.sw::after{transition:transform .32s var(--spring),background-color .2s}
+.prev{transition:font-size .2s var(--ease)}
+</style>
+<script id="motion-js">
+const tick=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
+function stag(sel){document.querySelectorAll(sel).forEach((e,i)=>{e.style.setProperty("--i",Math.min(i,10));e.classList.remove("in");void e.offsetWidth;e.classList.add("in")})}
+
+document.querySelectorAll(".seg").forEach(g=>{
+  const i=document.createElement("i");i.className="ind";g.prepend(i);
+  const mv=()=>{const b=g.querySelector("button.on");i.style.left=b.offsetLeft+"px";i.style.width=b.offsetWidth+"px"};
+  i.style.transition="none";mv();requestAnimationFrame(()=>i.style.transition="");
+  g.addEventListener("click",()=>{requestAnimationFrame(mv);tick()});addEventListener("resize",mv);document.fonts&&document.fonts.ready.then(mv);
+});
+document.querySelectorAll(".sw").forEach(s=>s.addEventListener("click",tick));
+stag("h1,.sec,.set,.prev,.note");
+</script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sources – feed reader mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<style>
+:root{--bg:#EEEAE1;--ink:#141413;--mute:#6B665C;--line:rgba(20,20,19,.16);--card:#D6CFBF;--acc:#E4472B}
+@media (prefers-color-scheme:dark){:root{--bg:#10100F;--ink:#F1EDE4;--mute:#9C978B;--line:rgba(241,237,228,.18);--card:#242320}}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:"Archivo","Helvetica Neue",Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0}
+.devbar{display:flex;gap:8px;align-items:center;justify-content:center;padding:8px;font-size:12px;color:var(--mute);border-bottom:1px dashed var(--line)}
+.devbar button{border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px}
+.devbar button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.app{max-width:430px;min-height:100vh;margin:0 auto;display:flex;flex-direction:column}
+main{flex:1}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line)}
+header button{width:28px;height:28px;display:grid;place-items:center}
+.menu{display:grid;gap:6px;width:22px}.menu i{display:block;height:1.5px;background:var(--ink)}
+.logo{font-weight:800;font-stretch:125%;font-size:16px;letter-spacing:.01em}
+.glass{position:relative;width:16px;height:16px;border:1.5px solid var(--ink);border-radius:50%}
+.glass::after{content:"";position:absolute;width:7px;height:1.5px;background:var(--ink);right:-6px;bottom:-2px;transform:rotate(45deg)}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:26px 20px 22px}
+h1{font-size:40px;line-height:.96;text-transform:uppercase;font-weight:800;font-stretch:112%;letter-spacing:-.02em}
+.count{font-size:13px;color:var(--mute);margin-top:10px}
+.pill{flex:none;border:1px solid var(--ink);border-radius:999px;padding:11px 20px;font-size:14px;font-weight:500;text-decoration:none;color:var(--ink)}
+.pill.solid{background:var(--ink);color:var(--bg)}
+.src{display:flex;align-items:center;gap:16px;padding:16px 20px;border-top:1px solid var(--line);color:inherit;text-decoration:none}
+.mono{flex:none;width:48px;height:48px;border-radius:14px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-weight:800;font-stretch:125%;font-size:15px}
+.info{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.info b{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.sub{font-size:13px;color:var(--mute)}
+.un{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:500}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--acc)}
+.warn{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--ink);display:grid;place-items:center;font-size:14px;font-weight:700}
+.src.muted .mono,.src.muted .info{opacity:.5}
+.end{border-top:1px solid var(--line)}
+.empty{padding:56px 20px}
+.empty h2{font-size:34px;line-height:.98;text-transform:uppercase;font-weight:800;font-stretch:112%;letter-spacing:-.02em}
+.empty p{margin:16px 0 26px;font-size:15px;line-height:1.4;color:var(--mute);max-width:30ch}
+nav{position:sticky;bottom:0;display:grid;grid-template-columns:repeat(3,1fr);background:var(--bg);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav a{position:relative;padding:16px 0 18px;text-align:center;font-size:13px;color:var(--mute);text-decoration:none}
+nav a.on{color:var(--ink);font-weight:500}
+nav a.on::before{content:"";position:absolute;top:-1px;left:34%;right:34%;height:2px;background:var(--ink)}
+</style>
+</head>
+<body>
+<div class="devbar">Mockup only
+  <button class="on" data-mode="list">With sources</button>
+  <button data-mode="empty">No sources</button>
+</div>
+<div class="app">
+<header>
+  <button aria-label="Menu"><span class="menu"><i></i><i></i><i></i></span></button>
+  <span class="logo">Signal</span>
+  <button aria-label="Search"><span class="glass"></span></button>
+</header>
+<main id="main"></main>
+<nav>
+  <a href="#">Home</a>
+  <a href="#">Saved</a>
+  <a href="#" class="on">Sources</a>
+</nav>
+</div>
+<script>
+// Ordered by most recent article, so Home's source chips can follow the same order.
+const SOURCES=[
+  {name:"Creative Review",ini:"CR",latest:"12 min ago",unread:2},
+  {name:"WALLPAPER*",ini:"W*",latest:"38 min ago",unread:1,muted:true},
+  {name:"Creative Boom",ini:"CB",latest:"1 hr ago",unread:2},
+  {name:"Dezeen",ini:"DZ",error:true},
+  {name:"WIRED",ini:"WD",latest:"4 hr ago",unread:1}
+];
+const $=s=>document.querySelector(s);
+function row(s){
+  const sub=s.error?"Feed isn’t loading. Tap to check.":s.muted?"Muted":`Latest ${s.latest}`;
+  const right=s.error?'<span class="warn" aria-label="Problem">!</span>':(s.unread&&!s.muted?`<span class="un"><i class="dot"></i>${s.unread}</span>`:"");
+  return `<a class="src${s.muted?" muted":""}" href="#"><div class="mono">${s.ini}</div><div class="info"><b>${s.name}</b><span class="sub">${sub}</span></div>${right}</a>`;
+}
+function render(mode){
+  if(mode==="empty"){
+    $("#main").innerHTML=`<div class="empty"><h2>No sources yet</h2><p>Add a few sites and their articles will show up on Home.</p><a class="pill solid" href="#">Add sources</a></div>`;
+    return;
+  }
+  const n=SOURCES.length;
+  $("#main").innerHTML=`<div class="top"><div><h1>Sources</h1><p class="count">${n} sources</p></div><a class="pill solid" href="#">Add +</a></div>`+SOURCES.map(row).join("")+`<div class="end"></div>`;
+}
+document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("[data-mode]").forEach(x=>x.classList.toggle("on",x===b));
+  render(b.dataset.mode);
+});
+render("list");
+</script>
+<style id="motion">
+/* MOTION TOKENS
+   press .18s spring | content enter .35s ease-out, 40ms stagger | pop .4s spring | unfold .35s ease-out
+   switches and sliding pills .3s | reduced motion: all off */
+:root{--ease:cubic-bezier(.2,.8,.2,1);--spring:cubic-bezier(.34,1.56,.64,1)}
+*{-webkit-tap-highlight-color:transparent}
+button,.pill,.chip{transition:transform .18s var(--spring),background-color .2s,color .2s,border-color .2s,opacity .2s}
+button:not(:disabled):active,a.pill:active{transform:scale(.96)}
+.row:active,.src:active,.set.link:active{transform:scale(.985)}
+.row,.src,.set.link{transition:transform .18s var(--spring),opacity .35s}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+@keyframes pop{0%{transform:scale(.6)}50%{transform:scale(1.3)}100%{transform:scale(1)}}
+@keyframes unfold{from{opacity:0;transform:translateY(-8px) scale(.97)}}
+@keyframes titleUp{from{opacity:0;transform:translateY(40px)}}
+.in{animation:rise .35s var(--ease) backwards;animation-delay:calc(var(--i,0)*40ms)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+
+.warn{animation:pop .5s var(--spring) .4s backwards}
+</style>
+<script id="motion-js">
+const tick=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
+function stag(sel){document.querySelectorAll(sel).forEach((e,i)=>{e.style.setProperty("--i",Math.min(i,10));e.classList.remove("in");void e.offsetWidth;e.classList.add("in")})}
+
+const runIn=()=>stag(".top,.src,.empty");runIn();
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",runIn));
+</script>
+</body>
+</html>

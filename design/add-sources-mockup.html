@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Add sources – feed reader mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<style>
+:root{--bg:#EEEAE1;--ink:#141413;--mute:#6B665C;--line:rgba(20,20,19,.16);--card:#D6CFBF;--acc:#E4472B}
+@media (prefers-color-scheme:dark){:root{--bg:#10100F;--ink:#F1EDE4;--mute:#9C978B;--line:rgba(241,237,228,.18);--card:#242320}}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:"Archivo","Helvetica Neue",Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0}
+.devbar{display:flex;gap:8px;align-items:center;justify-content:center;padding:8px;font-size:12px;color:var(--mute);border-bottom:1px dashed var(--line)}
+.devbar button{border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px}
+.devbar button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.app{max-width:430px;min-height:100vh;margin:0 auto;display:flex;flex-direction:column}
+main{flex:1;padding-bottom:24px}
+header{display:flex;align-items:center;justify-content:space-between;min-height:57px;padding:14px 20px;border-bottom:1px solid var(--line)}
+.back{display:block;width:12px;height:12px;margin:0 0 0 6px;border-left:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);transform:rotate(45deg)}
+.logo{font-weight:800;font-stretch:125%;font-size:16px}
+.skip{font-size:14px;text-decoration:underline;text-underline-offset:3px}
+#head{padding:26px 20px 20px}
+h1{font-size:40px;line-height:.96;text-transform:uppercase;font-weight:800;font-stretch:112%;letter-spacing:-.02em}
+#head p{font-size:15px;line-height:1.4;color:var(--mute);margin-top:14px;max-width:34ch}
+.find{display:flex;align-items:center;gap:8px;margin:0 20px;padding:6px 6px 6px 20px;border:1px solid var(--ink);border-radius:999px}
+.find input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--ink);font:inherit;font-size:16px;padding:10px 0}
+.find input::placeholder{color:var(--mute)}
+.pill{flex:none;border:1px solid var(--ink);border-radius:999px;padding:10px 20px;font-size:14px;font-weight:500}
+.pill.solid{background:var(--ink);color:var(--bg)}
+#result{margin:0 20px}
+.msg{margin-top:14px;font-size:14px;line-height:1.4;color:var(--mute);max-width:38ch}
+.found{margin-top:14px;border:1px solid var(--line);border-radius:18px}
+.found .s{border-top:0}
+.sec{padding:28px 20px 10px;font-size:13px;color:var(--mute)}
+.s{display:flex;align-items:center;gap:16px;padding:14px 20px;border-top:1px solid var(--line)}
+.mono{flex:none;width:48px;height:48px;border-radius:14px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-weight:800;font-stretch:125%;font-size:15px}
+.info{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.info b{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.sub{font-size:13px;color:var(--mute)}
+footer{position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:14px 20px calc(14px + env(safe-area-inset-bottom))}
+#go{display:block;width:100%;border-radius:999px;padding:17px;font-size:15px;font-weight:500;background:var(--ink);color:var(--bg)}
+#go:disabled{background:none;border:1px solid var(--line);color:var(--mute)}
+</style>
+</head>
+<body>
+<div class="devbar">Mockup only
+  <button class="on" data-mode="normal">From Sources</button>
+  <button data-mode="first">First launch</button>
+</div>
+<div class="app">
+<header id="top"></header>
+<main>
+  <div id="head"></div>
+  <form class="find" id="form">
+    <input id="url" type="text" inputmode="url" placeholder="Paste a site address" autocomplete="off" autocapitalize="off">
+    <button class="pill solid" type="submit">Find feed</button>
+  </form>
+  <div id="result"></div>
+  <div id="list"></div>
+</main>
+<footer><button id="go"></button></footer>
+</div>
+<script>
+const STARTER=[
+  {g:"Design",name:"Creative Boom",d:"Illustration, design and photography"},
+  {g:"Design",name:"Creative Review",d:"Branding, advertising and visual culture"},
+  {g:"Design",name:"WALLPAPER*",d:"Design, interiors, fashion and travel"},
+  {g:"Design",name:"Dezeen",d:"Architecture and design news"},
+  {g:"Design",name:"It’s Nice That",d:"Art, graphics and creative work"},
+  {g:"Design",name:"Designboom",d:"Design, art and architecture"},
+  {g:"Tech and culture",name:"WIRED",d:"Technology, science and culture"},
+  {g:"Tech and culture",name:"The Verge",d:"Gadgets, apps and the internet"},
+  {g:"Tech and culture",name:"Ars Technica",d:"In-depth technology reporting"},
+  {g:"Tech and culture",name:"Fast Company",d:"Business, design and innovation"}
+];
+const FOLLOWING=["Creative Boom","Creative Review","WALLPAPER*","Dezeen","WIRED"];
+const $=s=>document.querySelector(s);
+const ini=n=>n.replace(/[^A-Za-z*]/g,"").slice(0,2).toUpperCase();
+let mode="normal", picked=new Set(), custom=[], found=null;
+const locked=n=>mode==="normal"&&FOLLOWING.some(f=>f.toLowerCase()===n.toLowerCase());
+const known=n=>locked(n)||picked.has(n)||custom.some(c=>c.toLowerCase()===n.toLowerCase());
+
+function action(n){
+  if(locked(n)) return '<span class="sub">Following</span>';
+  return picked.has(n)?`<button class="pill solid" data-n="${n}">Added</button>`:`<button class="pill" data-n="${n}">Add</button>`;
+}
+function row(n,d){return `<div class="s"><div class="mono">${ini(n)}</div><div class="info"><b>${n}</b><span class="sub">${d}</span></div>${action(n)}</div>`}
+
+function render(){
+  $("#top").innerHTML=mode==="first"?'<span class="logo">Signal</span><a class="skip" href="#">Skip</a>':'<a class="back" href="#" aria-label="Back"></a>';
+  $("#head").innerHTML=mode==="first"
+    ?'<h1>Pick what you read</h1><p>Choose a few sites to start. You can change this any time in Sources.</p>'
+    :'<h1>Add sources</h1><p>Pick from the list, or paste a site’s address and the app will look for its feed.</p>';
+  let h=custom.length?'<p class="sec">Added from a link</p>'+custom.map(n=>row(n,"Added from a link").replace(/<button.*<\/button>/,'<button class="pill solid" disabled>Added</button>')).join(""):"";
+  ["Design","Tech and culture"].forEach(g=>{h+=`<p class="sec">${g}</p>`+STARTER.filter(s=>s.g===g).map(s=>row(s.name,s.d)).join("")});
+  $("#list").innerHTML=h;
+  const n=picked.size+custom.length, go=$("#go");
+  go.disabled=mode==="first"&&n===0;
+  go.textContent=mode==="first"?(n?`Continue with ${n}`:"Pick at least one"):(n?`Add ${n} and finish`:"Done");
+}
+function renderResult(){
+  const r=$("#result");
+  if(!found){r.innerHTML="";return}
+  if(found.state==="looking") r.innerHTML='<p class="msg">Looking for a feed…</p>';
+  else if(found.state==="none") r.innerHTML=`<p class="msg">Couldn’t find a feed on ${found.host}. Try the site’s homepage address, or paste the feed link itself if you have it.</p>`;
+  else if(known(found.name)) r.innerHTML=`<p class="msg">${found.name} is already in your list.</p>`;
+  else r.innerHTML=`<div class="found"><div class="s"><div class="mono">${ini(found.name)}</div><div class="info"><b>${found.name}</b><span class="sub">Feed found at ${found.host}</span></div><button class="pill" id="addfound">Add</button></div></div>`;
+}
+// Mockup behaviour only. The real app loads the page, reads its <link rel="alternate" type="application/rss+xml"> tag, and falls back to common paths like /feed.
+$("#form").addEventListener("submit",e=>{
+  e.preventDefault();
+  let v=$("#url").value.trim(); if(!v) return;
+  if(!/^https?:\/\//i.test(v)) v="https://"+v;
+  let host; try{host=new URL(v).hostname.replace(/^www\./,"")}catch{found={state:"none",host:v};renderResult();return}
+  const name=host.split(".")[0].replace(/^./,c=>c.toUpperCase());
+  found={state:"looking",host}; renderResult();
+  setTimeout(()=>{found=host.includes("nofeed")?{state:"none",host}:{state:"ok",host,name};renderResult()},700);
+});
+$("#result").addEventListener("click",e=>{
+  if(e.target.id==="addfound"){custom.push(found.name);found=null;$("#url").value="";renderResult();render()}
+});
+$("#list").addEventListener("click",e=>{
+  const n=e.target.dataset.n; if(!n) return;
+  picked.has(n)?picked.delete(n):picked.add(n); render();
+});
+document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("[data-mode]").forEach(x=>x.classList.toggle("on",x===b));
+  mode=b.dataset.mode; picked.clear(); custom=[]; found=null; $("#url").value=""; renderResult(); render();
+});
+render();
+</script>
+<style id="motion">
+/* MOTION TOKENS
+   press .18s spring | content enter .35s ease-out, 40ms stagger | pop .4s spring | unfold .35s ease-out
+   switches and sliding pills .3s | reduced motion: all off */
+:root{--ease:cubic-bezier(.2,.8,.2,1);--spring:cubic-bezier(.34,1.56,.64,1)}
+*{-webkit-tap-highlight-color:transparent}
+button,.pill,.chip{transition:transform .18s var(--spring),background-color .2s,color .2s,border-color .2s,opacity .2s}
+button:not(:disabled):active,a.pill:active{transform:scale(.96)}
+.row:active,.src:active,.set.link:active{transform:scale(.985)}
+.row,.src,.set.link{transition:transform .18s var(--spring),opacity .35s}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+@keyframes pop{0%{transform:scale(.6)}50%{transform:scale(1.3)}100%{transform:scale(1)}}
+@keyframes unfold{from{opacity:0;transform:translateY(-8px) scale(.97)}}
+@keyframes titleUp{from{opacity:0;transform:translateY(40px)}}
+.in{animation:rise .35s var(--ease) backwards;animation-delay:calc(var(--i,0)*40ms)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+
+.pill.solid[data-n]::before{content:"✓";margin-right:6px}
+.pill.just{animation:pop .35s var(--spring)}
+.found{animation:unfold .35s var(--ease)}
+.msg{animation:rise .25s var(--ease)}
+#go{transition:background-color .2s,color .2s,transform .18s var(--spring)}
+</style>
+<script id="motion-js">
+const tick=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
+function stag(sel){document.querySelectorAll(sel).forEach((e,i)=>{e.style.setProperty("--i",Math.min(i,10));e.classList.remove("in");void e.offsetWidth;e.classList.add("in")})}
+
+const runIn=()=>stag("#head,#list .sec,#list .s");runIn();
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",runIn));
+// Pop the pill that was just toggled (the list re-renders, so find it again).
+document.getElementById("list").addEventListener("click",e=>{const n=e.target.dataset.n;if(!n)return;const b=document.querySelector('#list [data-n="'+CSS.escape(n)+'"]');if(b&&b.classList.contains("solid")){b.classList.add("just");tick()}});
+</script>
+</body>
+</html>
