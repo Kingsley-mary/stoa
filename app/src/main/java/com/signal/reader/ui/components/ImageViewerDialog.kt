@@ -9,13 +9,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -44,23 +50,31 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 
+data class ArticleImage(
+    val url: String,
+    val caption: String? = null,
+    val credit: String? = null
+)
+
 /**
- * Editorial Fullscreen Lightbox with gesture-driven pinch-to-zoom, pan, and double-tap zoom.
+ * Editorial Fullscreen Lightbox Gallery:
+ * Multi-image swipeable gallery with HorizontalPager, gesture-driven pinch-to-zoom,
+ * double-tap zoom, caption/credit overlay, backdrop tap-to-dismiss, and ✕ button.
  */
 @Composable
 fun ImageViewerDialog(
-    imageUrl: String,
-    caption: String? = null,
+    images: List<ArticleImage>,
+    initialIndex: Int = 0,
     onDismiss: () -> Unit
 ) {
-    val haptics = rememberSignalHaptics()
-    val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+    if (images.isEmpty()) return
 
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    val haptics = rememberSignalHaptics()
+    val pagerState = rememberPagerState(
+        initialPage = initialIndex.coerceIn(0, images.size - 1),
+        pageCount = { images.size }
+    )
+
     var showControls by remember { mutableStateOf(true) }
 
     BackHandler { onDismiss() }
@@ -76,103 +90,92 @@ fun ImageViewerDialog(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.96f))
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = { tapOffset ->
-                            haptics.tick()
-                            if (scale > 1.05f) {
-                                scale = 1f
-                                offset = Offset.Zero
-                            } else {
-                                scale = 2.5f
-                                // Center zoom on tap position
-                                val centerX = screenWidthPx / 2f
-                                val centerY = screenHeightPx / 2f
-                                offset = Offset(
-                                    x = (centerX - tapOffset.x) * 1.5f,
-                                    y = (centerY - tapOffset.y) * 1.5f
-                                )
-                            }
-                        },
-                        onTap = {
-                            showControls = !showControls
-                        }
-                    )
-                }
         ) {
-            // Zoomable & Pannable Image Layer
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            val newScale = (scale * zoom).coerceIn(1f, 5f)
-                            scale = newScale
-
-                            if (newScale > 1f) {
-                                val maxOffsetX = (screenWidthPx * (newScale - 1f)) / 2f
-                                val maxOffsetY = (screenHeightPx * (newScale - 1f)) / 2f
-
-                                val newX = (offset.x + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
-                                val newY = (offset.y + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-                                offset = Offset(newX, newY)
-                            } else {
-                                offset = Offset.Zero
-                            }
-                        }
+            // Horizontal Pager for swiping between article images
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                val articleImg = images[page]
+                ZoomableImageItem(
+                    image = articleImg,
+                    onTapBackdrop = {
+                        // Tapping background dismisses dialog
+                        haptics.tick()
+                        onDismiss()
                     },
-                contentAlignment = Alignment.Center
-            ) {
-                AsyncImage(
-                    model = imageUrl,
-                    contentDescription = caption ?: "Fullscreen article photo",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(
-                            scaleX = scale,
-                            scaleY = scale,
-                            translationX = offset.x,
-                            translationY = offset.y
-                        ),
-                    contentScale = ContentScale.Fit
+                    onToggleControls = {
+                        showControls = !showControls
+                    }
                 )
             }
 
-            // Top Bar with Dismiss "✕" Button
+            // Top Control Bar: Page Counter + ✕ Dismiss Button
             AnimatedVisibility(
                 visible = showControls,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(20.dp)
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.15f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            haptics.tick()
-                            onDismiss()
-                        },
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = "✕",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    // Counter pill (e.g. 1 / 4) if multiple images
+                    if (images.size > 1) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "${pagerState.currentPage + 1} / ${images.size}",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.size(38.dp))
+                    }
+
+                    // Dismiss "✕" Button
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.15f))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                haptics.tick()
+                                onDismiss()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "✕",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
-            // Bottom Caption Bar
-            if (!caption.isNullOrBlank()) {
+            // Bottom Caption & Credit Bar
+            val currentImg = images.getOrNull(pagerState.currentPage)
+            val hasCaption = !currentImg?.caption.isNullOrBlank()
+            val hasCredit = !currentImg?.credit.isNullOrBlank()
+
+            if (hasCaption || hasCredit) {
                 AnimatedVisibility(
                     visible = showControls,
                     enter = fadeIn(),
@@ -185,22 +188,115 @@ fun ImageViewerDialog(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color.Black.copy(alpha = 0.7f))
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.Black.copy(alpha = 0.75f))
+                            .padding(horizontal = 18.dp, vertical = 14.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = caption,
-                            color = Color(0xFFDDD9D0),
-                            fontSize = 13.sp,
-                            fontStyle = FontStyle.Italic,
-                            lineHeight = 18.sp,
-                            textAlign = TextAlign.Center
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (hasCaption) {
+                                Text(
+                                    text = currentImg!!.caption!!,
+                                    color = Color(0xFFEEEAE1),
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                            if (hasCredit) {
+                                Text(
+                                    text = currentImg!!.credit!!,
+                                    color = Color(0xFF9C978B),
+                                    fontSize = 11.sp,
+                                    fontStyle = FontStyle.Italic,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ZoomableImageItem(
+    image: ArticleImage,
+    onTapBackdrop: () -> Unit,
+    onToggleControls: () -> Unit
+) {
+    val haptics = rememberSignalHaptics()
+    val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { tapOffset ->
+                        haptics.tick()
+                        if (scale > 1.05f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            scale = 2.5f
+                            val centerX = screenWidthPx / 2f
+                            val centerY = screenHeightPx / 2f
+                            offset = Offset(
+                                x = (centerX - tapOffset.x) * 1.5f,
+                                y = (centerY - tapOffset.y) * 1.5f
+                            )
+                        }
+                    },
+                    onTap = {
+                        if (scale > 1.05f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            onTapBackdrop()
+                        }
+                    }
+                )
+            }
+            .pointerInput(scale) {
+                if (scale > 1f) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        val newScale = (scale * zoom).coerceIn(1f, 5f)
+                        scale = newScale
+
+                        val maxOffsetX = (screenWidthPx * (newScale - 1f)) / 2f
+                        val maxOffsetY = (screenHeightPx * (newScale - 1f)) / 2f
+
+                        val newX = (offset.x + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
+                        val newY = (offset.y + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
+                        offset = Offset(newX, newY)
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = image.url,
+            contentDescription = image.caption ?: "Article image",
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    translationX = offset.x,
+                    translationY = offset.y
+                ),
+            contentScale = ContentScale.Fit
+        )
     }
 }

@@ -404,8 +404,15 @@ fun SettingsScreen(
                                 fontSize = 17.sp,
                                 color = colors.ink
                             )
+                            val versionName = remember {
+                                try {
+                                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2"
+                                } catch (_: Exception) {
+                                    "1.2"
+                                }
+                            }
                             Text(
-                                text = "1.0",
+                                text = versionName,
                                 fontSize = 14.sp,
                                 color = colors.mute
                             )

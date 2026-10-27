@@ -13,6 +13,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,6 +72,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
@@ -80,10 +83,14 @@ import coil.request.ImageRequest
 import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.repository.FeedRepository
+import com.signal.reader.ui.components.ArticleImage
+import com.signal.reader.ui.components.ArticleRow
 import com.signal.reader.ui.components.BackChevron
 import com.signal.reader.ui.components.BookmarkIcon
 import com.signal.reader.ui.components.ImageViewerDialog
+import com.signal.reader.ui.components.MoonIcon
 import com.signal.reader.ui.components.StaggeredItem
+import com.signal.reader.ui.components.SunIcon
 import com.signal.reader.ui.components.TimeUtils
 import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
@@ -102,6 +109,7 @@ fun ReaderScreen(
     settingsManager: SettingsManager,
     onBack: () -> Unit,
     onOpenSourcePage: (Long) -> Unit,
+    onOpenArticle: ((Long) -> Unit)? = null,
     onOpenWebUrl: ((url: String, title: String?) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
@@ -115,6 +123,10 @@ fun ReaderScreen(
     val settings by settingsManager.settingsFlow.collectAsState()
 
     val article by repository.getArticleByIdFlow(articleId).collectAsState(initial = null)
+    val homeArticles by repository.getHomeStreamFlow().collectAsState(initial = emptyList())
+    val relatedArticles = remember(homeArticles, articleId) {
+        homeArticles.filter { it.id != articleId && !it.read }.take(3)
+    }
 
     // Mark as read immediately on open
     LaunchedEffect(articleId) {
@@ -159,8 +171,8 @@ fun ReaderScreen(
     val currentFontSize = fontSizes[currentFontSizeIndex]
     var isAaPanelOpen by remember { mutableStateOf(false) }
 
-    // Fullscreen pinch-to-zoom image viewer state
-    var activeZoomImage by remember { mutableStateOf<Pair<String, String?>?>(null) }
+    // Multi-image gallery state
+    var activeGalleryIndex by remember { mutableStateOf<Int?>(null) }
 
     // Title entrance animation (titleUp from translateY(40px), 500ms ease-out, delay 120ms)
     val titleOffsetY = remember { Animatable(40f) }
@@ -199,6 +211,25 @@ fun ReaderScreen(
         parseContentBlocks(raw, heroImageUrl = currentArticle.imageUrl)
     }
 
+    val allArticleImages = remember(currentArticle, blocks) {
+        val list = mutableListOf<ArticleImage>()
+        if (!currentArticle.imageUrl.isNullOrBlank()) {
+            list.add(ArticleImage(url = currentArticle.imageUrl, caption = currentArticle.title, credit = currentArticle.sourceName))
+        }
+        for (b in blocks) {
+            if (b is ContentBlock.Image && b.url.isNotBlank() && list.none { it.url == b.url }) {
+                list.add(ArticleImage(url = b.url, caption = b.caption, credit = currentArticle.sourceName))
+            }
+        }
+        list
+    }
+
+    val showStickyTitle by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 1 || (listState.firstVisibleItemIndex == 1 && listState.firstVisibleItemScrollOffset > 180)
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -227,6 +258,23 @@ fun ReaderScreen(
                             contentAlignment = Alignment.CenterStart
                         ) {
                             BackChevron(color = colors.ink)
+                        }
+
+                        AnimatedVisibility(
+                            visible = showStickyTitle,
+                            enter = fadeIn(tween(220)) + slideInHorizontally { 30 },
+                            exit = fadeOut(tween(180)) + slideOutHorizontally { -20 },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = currentArticle.title,
+                                color = colors.ink,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(start = 12.dp)
+                            )
                         }
                     }
                     // Bottom border line with reading progress indicator (#prog)
@@ -274,7 +322,7 @@ fun ReaderScreen(
                             .then(
                                 if (!currentArticle.imageUrl.isNullOrBlank()) {
                                     Modifier.clickable {
-                                        activeZoomImage = Pair(currentArticle.imageUrl, currentArticle.title)
+                                        activeGalleryIndex = 0
                                     }
                                 } else Modifier
                             )
@@ -334,33 +382,39 @@ fun ReaderScreen(
 
                 // Sequential content blocks (paragraphs, inline images, headings, quotes, lists)
                 val blocksToRender = if (currentArticle.isExcerptOnly) blocks.take(3) else blocks
-                itemsIndexed(blocksToRender, key = { idx, _ -> "content_block_$idx" }) { _, block ->
-                    RenderContentBlock(
-                        block = block,
-                        fontSize = currentFontSize,
-                        onImageClick = { url, caption ->
-                            activeZoomImage = Pair(url, caption)
-                        },
-                        onLinkClick = { url ->
-                            openWeb(url, null)
+                itemsIndexed(blocksToRender, key = { idx, _ -> "content_block_$idx" }) { idx, block ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        RenderContentBlock(
+                            block = block,
+                            fontSize = currentFontSize,
+                            onImageClick = { url, _ ->
+                                val clickedIdx = allArticleImages.indexOfFirst { it.url == url }.takeIf { it >= 0 } ?: 0
+                                activeGalleryIndex = clickedIdx
+                            },
+                            onLinkClick = { url ->
+                                openWeb(url, null)
+                            }
+                        )
+
+                        // 110dp smooth gradient overlay directly fading the end of excerpt text
+                        if (currentArticle.isExcerptOnly && idx == blocksToRender.lastIndex) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(110.dp)
+                                    .align(Alignment.BottomCenter)
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(Color.Transparent, colors.bg)
+                                        )
+                                    )
+                            )
                         }
-                    )
+                    }
                 }
 
                 // Excerpt-only CTA (#cta)
                 if (currentArticle.isExcerptOnly) {
-                    item(key = "excerpt_gradient") {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(80.dp)
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(Color.Transparent, colors.bg)
-                                    )
-                                )
-                        )
-                    }
                     item(key = "excerpt_cta") {
                         ExcerptCta(
                             onReadFullClick = { openWeb(currentArticle.url, currentArticle.title) }
@@ -368,8 +422,34 @@ fun ReaderScreen(
                     }
                 }
 
+                // Related articles from followed sources (#related) matching updated reader-mockup.html
+                if (relatedArticles.isNotEmpty()) {
+                    item(key = "related_header") {
+                        Spacer(modifier = Modifier.height(36.dp))
+                        Text(
+                            text = "Related from your sources",
+                            color = colors.mute,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                    }
+
+                    itemsIndexed(relatedArticles, key = { _, item -> "related_${item.id}" }) { _, related ->
+                        ArticleRow(
+                            article = related,
+                            onClick = { onOpenArticle?.invoke(related.id) },
+                            onToggleSave = {
+                                coroutineScope.launch {
+                                    repository.toggleSaved(related.id)
+                                }
+                            }
+                        )
+                    }
+                }
+
                 item(key = "spacer_bottom") {
-                    Spacer(modifier = Modifier.height(48.dp))
+                    Spacer(modifier = Modifier.height(100.dp))
                 }
             }
 
@@ -440,21 +520,36 @@ fun ReaderScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .background(if (isDarkActive) colors.ink else colors.bg)
                                     .border(1.dp, colors.ink, CircleShape)
                                     .signalPressScale(0.96f) {
                                         haptics.tick()
                                         settingsManager.updateTheme(if (isDarkActive) "light" else "dark")
                                     }
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "Dark",
-                                    color = if (isDarkActive) colors.bg else colors.ink,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    if (isDarkActive) {
+                                        SunIcon(color = colors.ink, modifier = Modifier.size(14.dp))
+                                        Text(
+                                            text = "Light",
+                                            color = colors.ink,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    } else {
+                                        MoonIcon(color = colors.ink, modifier = Modifier.size(14.dp))
+                                        Text(
+                                            text = "Dark",
+                                            color = colors.ink,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -468,7 +563,8 @@ fun ReaderScreen(
                     .fillMaxWidth()
                     .background(colors.bg)
                     .navigationBarsPadding()
-                    .height(56.dp)
+                    .height(62.dp)
+                    .padding(vertical = 4.dp)
             ) {
                 // Save button with pop bounce animation
                 Box(
@@ -543,12 +639,12 @@ fun ReaderScreen(
             }
         }
 
-        // Fullscreen Pinch-to-Zoom Lightbox
-        activeZoomImage?.let { (url, caption) ->
+        // Fullscreen Pinch-to-Zoom Lightbox Gallery
+        activeGalleryIndex?.let { initialIndex ->
             ImageViewerDialog(
-                imageUrl = url,
-                caption = caption,
-                onDismiss = { activeZoomImage = null }
+                images = allArticleImages,
+                initialIndex = initialIndex,
+                onDismiss = { activeGalleryIndex = null }
             )
         }
     }

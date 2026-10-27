@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>In-app web page – feed reader mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<style>
+/* MOTION TOKENS
+   open: the page grows as a circle from the Open site button .55s ease-out; the Reader behind eases back to 96% and dims; the control pill springs up .5s after a .2s delay
+   close reverses it | scrolling down shrinks the pill to just the address (.4s), scrolling up or tapping it brings the controls back
+   loading screen crossfades into the page .3s | progress line runs inside the pill: 30% at .15s, 70% at .6s, 100% on load, then fades
+   press .18s spring | note rises .35s | reduced motion: all off */
+:root{--bg:#EEEAE1;--ink:#141413;--mute:#6B665C;--line:rgba(20,20,19,.16);--card:#D6CFBF;--ease:cubic-bezier(.2,.8,.2,1);--spring:cubic-bezier(.34,1.56,.64,1)}
+@media (prefers-color-scheme:dark){:root{--bg:#10100F;--ink:#F1EDE4;--mute:#9C978B;--line:rgba(241,237,228,.18);--card:#242320}}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+body{display:grid;grid-template-rows:auto minmax(0,1fr);height:100vh;overflow:hidden;background:var(--bg);color:var(--ink);font-family:"Archivo","Helvetica Neue",Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;transition:transform .18s var(--spring),opacity .2s,background-color .2s,color .2s}
+button:not(:disabled):active{transform:scale(.92)}
+button:disabled{opacity:.3}
+.devbar{display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;padding:6px 8px;font-size:12px;color:var(--mute);border-bottom:1px dashed var(--line)}
+.devbar button{border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px}
+.devbar button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.phone{position:relative;width:100%;max-width:430px;height:100%;margin:0 auto;overflow:hidden;background:var(--bg)}
+/* The Reader behind */
+.ghost{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);transition:transform .55s var(--ease),filter .55s var(--ease)}
+.phone.open .ghost{transform:scale(.96);filter:brightness(.8)}
+.gh{padding:14px 20px;border-bottom:1px solid var(--line)}
+.back{display:block;width:12px;height:12px;margin:8px 0 8px 6px;border-left:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);transform:rotate(45deg)}
+.gb{flex:1;padding:20px}.gpic{aspect-ratio:1;border-radius:26px;background:var(--card)}
+.gb h1{font-size:32px;line-height:1;text-transform:uppercase;font-weight:800;font-stretch:112%;letter-spacing:-.02em;margin:22px 0}
+.gf{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}
+.gf button{padding:17px 0 19px;font-size:13px;color:var(--mute)}.gf .go{color:var(--ink);font-weight:500}
+/* The page: edge to edge, revealed as a circle that grows from the Open site button */
+.web{position:absolute;inset:0;background:var(--bg);clip-path:circle(0px at var(--ox,80%) var(--oy,94%));transition:clip-path .55s var(--ease)}
+.phone.open .web{clip-path:circle(170% at var(--ox,80%) var(--oy,94%))}
+.page{position:absolute;inset:0;overflow-y:auto;background:#fff;color:#161616}
+.site{min-height:100%;padding-bottom:130px;font-family:Georgia,"Times New Roman",serif;animation:fade .3s var(--ease)}
+.s-nav{padding:calc(16px + env(safe-area-inset-top)) 20px 14px;font:600 13px/1 Arial,sans-serif;letter-spacing:.04em;border-bottom:1px solid #e4e4e4}
+.s-img{aspect-ratio:3/2;background:#cfc8b8}.site h4{font-size:26px;line-height:1.15;margin:22px 20px 14px}
+.site p{font-size:17px;line-height:1.55;margin:0 20px 14px}.s-link{display:block;margin:20px;color:#0a4fb0;font-size:16px}
+@keyframes fade{from{opacity:0}}
+/* Loading and error use the app's own look, not a blank page */
+.ld{min-height:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:16px;padding:24px 20px 130px;background:var(--card);color:var(--ink);animation:fade .3s var(--ease)}
+.ld h2,.err h2{font-size:40px;line-height:.96;text-transform:uppercase;font-weight:800;font-stretch:112%;letter-spacing:-.02em}
+.ldt{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--mute)}
+.ldt i{width:7px;height:7px;border-radius:50%;background:var(--ink);animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25;transform:scale(.7)}}
+.err{min-height:100%;padding:calc(72px + env(safe-area-inset-top)) 20px 130px;background:var(--bg);color:var(--ink);animation:fade .3s var(--ease)}
+.err p{margin:16px 0 26px;font-size:15px;line-height:1.4;color:var(--mute);max-width:30ch}
+.pill{display:inline-block;border:1px solid var(--ink);border-radius:999px;padding:12px 22px;font-size:14px;font-weight:500;margin-right:8px}.pill.solid{background:var(--ink);color:var(--bg)}
+/* Floating control pill */
+.dock{position:absolute;left:0;right:0;bottom:0;z-index:10;display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 12px calc(12px + env(safe-area-inset-bottom));pointer-events:none;transform:translateY(140px);transition:transform .3s var(--ease)}
+.phone.open .dock{transform:none;transition:transform .5s var(--spring) .2s}
+.dock>*{pointer-events:auto}
+.note{width:100%;display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:20px;background:var(--bg);border:1px solid var(--line);font-size:13px;line-height:1.35;animation:rise .35s var(--ease)}
+.note p{flex:1}.note a{color:inherit;text-decoration:underline;text-underline-offset:3px}.note button{font-size:18px;padding:0 4px}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+.cap{position:relative;display:flex;align-items:center;gap:2px;width:100%;height:56px;padding:0 6px;border-radius:999px;background:var(--ink);color:var(--bg);overflow:hidden;transition:width .4s var(--ease)}
+.cap.min{width:196px}
+.cb{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;overflow:hidden;transition:width .3s var(--ease),opacity .2s,transform .18s var(--spring)}
+.cap.min .cb{width:0;opacity:0;pointer-events:none}
+.host{flex:1;min-width:0;height:44px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 12px;text-align:left}
+.hn{display:flex;flex-direction:column;gap:2px;min-width:0}.hn b{font-size:14px;font-weight:700;line-height:1.1}
+.hn span{font-size:11px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cap svg{width:18px;height:18px;flex:none}.cap path{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.spin svg{animation:rot .5s var(--ease)}@keyframes rot{to{transform:rotate(360deg)}}
+.x{position:relative;width:16px;height:16px}.x::before,.x::after{content:"";position:absolute;left:0;top:7px;width:16px;height:1.5px;background:currentColor;transform:rotate(45deg)}.x::after{transform:rotate(-45deg)}
+.chev{width:9px;height:9px;border-top:1.5px solid currentColor;border-right:1.5px solid currentColor;transform:rotate(-135deg)}.chev.f{transform:rotate(45deg)}
+#ext{font-size:20px}
+#save.on path{fill:currentColor}#save.pop svg{animation:pop .45s var(--spring)}
+@keyframes pop{0%{transform:scale(.6)}50%{transform:scale(1.3)}100%{transform:scale(1)}}
+#bar{position:absolute;left:0;bottom:0;height:2px;width:0;background:var(--bg);transition:width .4s var(--ease),opacity .2s}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="devbar">Mockup only
+  <button data-s="loading">Loading</button><button data-s="loaded" class="on">Loaded</button><button data-s="offline">Offline</button><button data-s="metered">Metered site</button>
+</div>
+<div class="phone" id="phone">
+  <div class="ghost" id="ghost">
+    <div class="gh"><span class="back"></span></div>
+    <div class="gb"><div class="gpic"></div><h1>The photographers who shoot only in natural light</h1></div>
+    <div class="gf"><button>Save</button><button>Aa</button><button class="go" id="openbtn">Open site ↗</button></div>
+  </div>
+  <section class="web" id="web" aria-label="Web page">
+    <div class="page" id="page"></div>
+    <div class="dock" id="dock">
+      <div class="note" id="note" hidden><p>WIRED limits free articles. <a href="#">Sign in</a> to keep reading.</p><button id="notex" aria-label="Dismiss">×</button></div>
+      <div class="cap" id="cap">
+        <button class="cb" id="close" aria-label="Close"><span class="x"></span></button>
+        <button class="cb" id="bk" aria-label="Back"><i class="chev"></i></button>
+        <button class="cb" id="fw" aria-label="Forward"><i class="chev f"></i></button>
+        <button class="host" id="host" aria-label="Reload"><span class="hn"><b id="wname">Creative Review</b><span id="whost">creativereview.co.uk</span></span><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/></svg></button>
+        <button class="cb" id="save" aria-label="Save"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button>
+        <button class="cb" id="ext" aria-label="Open in browser">↗</button>
+        <i id="bar"></i>
+      </div>
+    </div>
+  </section>
+</div>
+<script>
+const $=s=>document.querySelector(s), phone=$("#phone"), bar=$("#bar"), cap=$("#cap"), page=$("#page");
+const tick=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
+let hist=0, fwd=0, timer=null, lt=0;
+const SRC={ok:{n:"Creative Review",h:"creativereview.co.uk"},metered:{n:"WIRED",h:"wired.com"}};
+const SITE=(h,related)=>`<div class="site"><div class="s-nav">${h.toUpperCase()}</div><div class="s-img"></div><h4>${related?"Why every rebrand now ships with a custom typeface":"The photographers who shoot only in natural light"}</h4><p>For most of the last decade, the studio light was the default. A growing group of photographers is walking away from all of it.</p><p>They shoot at the edge of the day, in forests, ponds and half-lit rooms, and accept whatever the weather gives them.</p><p>Working without strobes means working slowly. Sessions are planned around the sun rather than the schedule.</p>${related?"":'<a class="s-link" href="#">Related: Why every rebrand now ships with a custom typeface</a>'}</div>`;
+const LOAD=s=>`<div class="ld"><div class="ldt"><i></i><span>Opening ${s.h}</span></div><h2>${s.n}</h2></div>`;
+const ERR=s=>`<div class="err"><h2>Can’t load this page</h2><p>Check your connection and try again. ${s.h} didn’t respond.</p><button class="pill solid" id="retry">Retry</button><button class="pill">Open in browser</button></div>`;
+
+function progress(run){
+  clearTimeout(timer); bar.style.opacity=1; bar.style.transition="none"; bar.style.width="0"; void bar.offsetWidth; bar.style.transition="";
+  if(run){setTimeout(()=>bar.style.width="30%",150);setTimeout(()=>bar.style.width="70%",600)}
+}
+function finish(){bar.style.width="100%";setTimeout(()=>{bar.style.opacity=0},350)}
+// auto: loading resolves on its own. The dev buttons hold a state so it can be inspected.
+function setState(s,auto){
+  const m=s==="metered", src=m?SRC.metered:SRC.ok;
+  $("#wname").textContent=src.n; $("#whost").textContent=src.h; $("#note").hidden=!m;
+  document.querySelectorAll("[data-s]").forEach(b=>b.classList.toggle("on",b.dataset.s===s));
+  if(s==="loading"){page.innerHTML=LOAD(src);progress(true);if(auto)timer=setTimeout(()=>setState(m?"metered":"loaded"),1500)}
+  else if(s==="offline"){progress(false);page.innerHTML=ERR(src)}
+  else{page.innerHTML=SITE(src.h,hist>0);finish()}
+  $("#bk").disabled=hist===0; $("#fw").disabled=fwd===0;
+}
+const load=()=>setState("loading",true);
+function setOrigin(){const b=$("#openbtn").getBoundingClientRect(),p=phone.getBoundingClientRect();$("#web").style.setProperty("--ox",b.left+b.width/2-p.left+"px");$("#web").style.setProperty("--oy",b.top+b.height/2-p.top+"px")}
+function openPage(){setOrigin();page.scrollTop=0;cap.classList.remove("min");lt=0;phone.classList.add("open");tick();hist=0;fwd=0;load()}
+function closePage(){setOrigin();phone.classList.remove("open");clearTimeout(timer)}
+const stepBack=()=>{hist--;fwd++;load()};
+// The close button always leaves. Esc and Android's back gesture step back through the site's pages first, then leave.
+const goBack=()=>hist>0?stepBack():closePage();
+
+document.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{if(!phone.classList.contains("open")){setOrigin();phone.classList.add("open")}setState(b.dataset.s)});
+$("#openbtn").onclick=openPage; $("#close").onclick=closePage; addEventListener("keydown",e=>{if(e.key==="Escape")goBack()});
+$("#host").onclick=()=>{
+  if(cap.classList.contains("min")){cap.classList.remove("min");return}
+  const r=$("#host");r.classList.remove("spin");void r.offsetWidth;r.classList.add("spin");load();
+};
+page.addEventListener("click",e=>{
+  if(e.target.closest(".s-link")){e.preventDefault();hist++;fwd=0;load()}
+  if(e.target.id==="retry")load();
+});
+$("#bk").onclick=stepBack; $("#fw").onclick=()=>{fwd--;hist++;load()};
+$("#notex").onclick=()=>{$("#note").hidden=true};
+$("#save").onclick=()=>{const b=$("#save");b.classList.toggle("on");b.classList.remove("pop");if(b.classList.contains("on")){void b.offsetWidth;b.classList.add("pop");tick()}};
+// Scrolling down shrinks the pill to just the address, scrolling up brings the controls back.
+page.addEventListener("scroll",()=>{const t=page.scrollTop;if(t>lt+8&&t>80)cap.classList.add("min");else if(t<lt-8)cap.classList.remove("min");lt=t},{passive:true});
+
+requestAnimationFrame(()=>{setOrigin();phone.classList.add("open");setState("loaded")});
+</script>
+</body>
+</html>

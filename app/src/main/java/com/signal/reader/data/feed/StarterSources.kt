@@ -34,10 +34,10 @@ object StarterSources {
         ),
         StarterSource(
             group = "Architecture",
-            name = "WALLPAPER*",
-            description = "Design, architecture, interiors and global style",
-            siteUrl = "https://www.wallpaper.com",
-            feedUrl = "https://www.wallpaper.com/feeds.xml"
+            name = "Failed Architecture",
+            description = "Critical architecture, urbanism and spatial politics",
+            siteUrl = "https://failedarchitecture.com",
+            feedUrl = "https://failedarchitecture.com/feed/"
         ),
         StarterSource(
             group = "Architecture",
@@ -97,8 +97,22 @@ object StarterSources {
             siteUrl = "https://www.swiss-miss.com",
             feedUrl = "https://www.swiss-miss.com/feed"
         ),
+        StarterSource(
+            group = "Product Design",
+            name = "Abduzeedo",
+            description = "Design, 3D art, typography and visual inspiration",
+            siteUrl = "https://abduzeedo.com",
+            feedUrl = "https://abduzeedo.com/rss.xml"
+        ),
 
         // Visual Art & Culture
+        StarterSource(
+            group = "Visual Art & Design",
+            name = "Booooooom",
+            description = "Contemporary art, emerging artists and creative culture",
+            siteUrl = "https://www.booooooom.com",
+            feedUrl = "https://www.booooooom.com/feed/"
+        ),
         StarterSource(
             group = "Visual Art & Design",
             name = "Colossal",

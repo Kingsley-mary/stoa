@@ -151,4 +151,26 @@ class FeedParserTest {
         assertEquals("AI and Energy", parsed.items[0].title)
         assertTrue(parsed.items[0].imageUrl!!.contains("width=380"))
     }
+
+    @Test
+    fun testRealRestOfWorldXml() {
+        val file = java.io.File("restofworld.xml")
+        if (file.exists()) {
+            val content = file.readText(Charsets.UTF_8)
+            val parsed = FeedParser.parse(content, "https://restofworld.org/feed/latest")
+            assertTrue(parsed.items.isNotEmpty())
+            println("Parsed Rest of World items: " + parsed.items.size)
+        }
+    }
+
+    @Test
+    fun testOkHttpFetchRestOfWorld() {
+        val client = com.signal.reader.data.feed.FeedFetcher.createDefaultClient()
+        val req = okhttp3.Request.Builder()
+            .url("https://restofworld.org/feed/latest")
+            .header("User-Agent", com.signal.reader.data.feed.FeedFetcher.USER_AGENT)
+            .build()
+        val resp = client.newCall(req).execute()
+        assertEquals(200, resp.code)
+    }
 }

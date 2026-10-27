@@ -380,6 +380,9 @@ fun SignalAppNav(
                             onBack = {
                                 navController.popBackStack()
                             },
+                            onOpenArticle = { nextId ->
+                                navController.navigate("reader/$nextId")
+                            },
                             onOpenSourcePage = { sourceId ->
                                 val popped = navController.popBackStack("source_page/$sourceId", inclusive = false)
                                 if (!popped) {
@@ -421,6 +424,9 @@ fun SignalAppNav(
                             settingsManager = app.settingsManager,
                             onArticleClick = { articleId ->
                                 navController.navigate("reader/$articleId")
+                            },
+                            onSourceClick = { sourceId ->
+                                navController.navigate("source_page/$sourceId")
                             },
                             onBack = {
                                 navController.popBackStack()
@@ -485,6 +491,7 @@ fun SignalAppNav(
                         BrowserScreen(
                             url = decodedUrl,
                             titleHint = decodedTitle,
+                            repository = app.repository,
                             onBack = { navController.popBackStack() }
                         )
                     }

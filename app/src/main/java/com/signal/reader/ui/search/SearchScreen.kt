@@ -9,6 +9,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -60,8 +62,10 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.local.entity.ArticleEntity
+import com.signal.reader.data.local.entity.SourceEntity
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.ui.components.BackChevron
+import com.signal.reader.ui.components.SourceLogo
 import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.TimeUtils
 import com.signal.reader.ui.components.rememberSignalHaptics
@@ -71,11 +75,20 @@ import com.signal.reader.ui.theme.signalPressScale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private val ALL_CATEGORIES = listOf(
+    "Architecture",
+    "Product Design",
+    "Visual Art & Design",
+    "Science",
+    "Tech & Culture"
+)
+
 @Composable
 fun SearchScreen(
     repository: FeedRepository,
     settingsManager: SettingsManager,
     onArticleClick: (Long) -> Unit,
+    onSourceClick: (Long) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -85,7 +98,9 @@ fun SearchScreen(
     val settings by settingsManager.settingsFlow.collectAsState()
 
     var query by remember { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<ArticleEntity>>(emptyList()) }
+    var searchArticles by remember { mutableStateOf<List<ArticleEntity>>(emptyList()) }
+    val allSources by repository.getAllSourcesFlow().collectAsState(initial = emptyList())
+
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
@@ -94,11 +109,38 @@ fun SearchScreen(
 
     LaunchedEffect(query) {
         if (query.isNotBlank()) {
-            searchResults = repository.searchArticles(query)
+            searchArticles = repository.searchArticles(query)
         } else {
-            searchResults = emptyList()
+            searchArticles = emptyList()
         }
     }
+
+    val queryTrimmed = query.trim()
+    val queryTerms = remember(queryTrimmed) {
+        queryTrimmed.split(Regex("\\s+")).filter { it.isNotBlank() }
+    }
+
+    // Filter matching categories
+    val matchedCategories = remember(queryTrimmed) {
+        if (queryTrimmed.isBlank()) emptyList()
+        else {
+            val q = queryTrimmed.lowercase()
+            ALL_CATEGORIES.filter { it.lowercase().contains(q) }
+        }
+    }
+
+    // Filter matching sources
+    val matchedSources = remember(queryTrimmed, allSources) {
+        if (queryTrimmed.isBlank()) emptyList()
+        else {
+            val q = queryTrimmed.lowercase()
+            allSources.filter { s ->
+                s.name.lowercase().contains(q) || s.description.lowercase().contains(q)
+            }
+        }
+    }
+
+    val totalResultsCount = matchedCategories.size + matchedSources.size + searchArticles.size
 
     fun submitSearch(q: String) {
         if (q.isNotBlank()) {
@@ -138,7 +180,7 @@ fun SearchScreen(
                 onValueChange = { query = it },
                 textStyle = TextStyle(
                     color = colors.ink,
-                    fontSize = 22.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (-0.01).sp
                 ),
@@ -149,9 +191,9 @@ fun SearchScreen(
                 decorationBox = { innerTextField ->
                     if (query.isEmpty()) {
                         Text(
-                            text = "Search articles",
+                            text = "Search articles, sources, categories",
                             color = colors.mute,
-                            fontSize = 22.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -198,46 +240,95 @@ fun SearchScreen(
         HorizontalDivider(color = colors.line, thickness = 1.dp)
 
         if (query.isBlank()) {
-            // Recent Searches view
-            val recents = settings.recentSearches
-            if (recents.isEmpty()) {
-                Box(modifier = Modifier.padding(48.dp, 20.dp)) {
+            // Idle State: Browse Categories & Recent Searches
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                // Browse Categories
+                item {
                     Text(
-                        text = "Searches you make will show up here.",
+                        text = "Browse categories",
                         color = colors.mute,
-                        fontSize = 15.sp,
-                        lineHeight = 21.sp
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Recent searches",
-                        color = colors.mute,
-                        fontSize = 13.sp
-                    )
-                    Text(
-                        text = "Clear all",
-                        color = colors.ink,
                         fontSize = 13.sp,
-                        textDecoration = TextDecoration.Underline,
-                        modifier = Modifier
-                            .signalPressScale(0.96f)
-                            .clickable {
-                                haptics.tick()
-                                settingsManager.clearRecentSearches()
-                            }
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 12.dp)
                     )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        for (cat in ALL_CATEGORIES) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .border(1.dp, colors.line, CircleShape)
+                                    .signalPressScale(0.96f)
+                                    .clickable {
+                                        haptics.tick()
+                                        query = cat
+                                        submitSearch(cat)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 9.dp)
+                            ) {
+                                Text(
+                                    text = cat,
+                                    color = colors.ink,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                    HorizontalDivider(color = colors.line, thickness = 1.dp)
                 }
 
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(recents, key = { _, q -> q }) { index, recentQuery ->
+                // Recent Searches
+                val recents = settings.recentSearches
+                if (recents.isEmpty()) {
+                    item {
+                        Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 32.dp)) {
+                            Text(
+                                text = "Searches you make will show up here.",
+                                color = colors.mute,
+                                fontSize = 15.sp,
+                                lineHeight = 21.sp
+                            )
+                        }
+                    }
+                } else {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Recent searches",
+                                color = colors.mute,
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                text = "Clear all",
+                                color = colors.ink,
+                                fontSize = 13.sp,
+                                textDecoration = TextDecoration.Underline,
+                                modifier = Modifier
+                                    .signalPressScale(0.96f)
+                                    .clickable {
+                                        haptics.tick()
+                                        settingsManager.clearRecentSearches()
+                                    }
+                            )
+                        }
+                    }
+
+                    itemsIndexed(recents, key = { _, q -> "recent_$q" }) { _, recentQuery ->
                         var isCollapsing by remember { mutableStateOf(false) }
 
                         AnimatedVisibility(
@@ -253,7 +344,7 @@ fun SearchScreen(
                             ) {
                                 Text(
                                     text = recentQuery,
-                                    fontSize = 18.sp,
+                                    fontSize = 17.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = colors.ink,
                                     modifier = Modifier
@@ -262,7 +353,7 @@ fun SearchScreen(
                                             haptics.tick()
                                             query = recentQuery
                                         }
-                                        .padding(vertical = 14.dp)
+                                        .padding(vertical = 12.dp)
                                 )
 
                                 Box(
@@ -292,8 +383,8 @@ fun SearchScreen(
                 }
             }
         } else {
-            // Search Results view
-            if (searchResults.isEmpty()) {
+            // Search Results View
+            if (totalResultsCount == 0) {
                 // Empty search result state (.empty)
                 Column(
                     modifier = Modifier
@@ -302,14 +393,14 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
-                        text = "NO ARTICLES MATCH “${query.trim()}”",
+                        text = "NO RESULTS MATCH “${query.trim()}”",
                         style = SignalTheme.typography.heroHeadline,
                         color = colors.ink,
                         fontSize = 26.sp,
                         lineHeight = 28.sp
                     )
                     Text(
-                        text = "Search covers recent articles from your sources. Try a shorter word or check the spelling.",
+                        text = "Search covers categories, sources, and recent articles. Try a shorter term or check the spelling.",
                         color = colors.mute,
                         fontSize = 15.sp,
                         lineHeight = 21.sp
@@ -317,31 +408,175 @@ fun SearchScreen(
                 }
             } else {
                 Text(
-                    text = "${searchResults.size} ${if (searchResults.size == 1) "result" else "results"} for “${query.trim()}”",
+                    text = "$totalResultsCount ${if (totalResultsCount == 1) "result" else "results"} for “${query.trim()}”",
                     color = colors.mute,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp)
                 )
 
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(searchResults, key = { _, item -> item.id }) { index, article ->
-                        StaggeredItem(index = index) {
-                            SearchResultRow(
-                                article = article,
-                                queryTerms = query.trim().split(Regex("\\s+")).filter { it.isNotBlank() },
+                    // 1. Matched Categories Section
+                    if (matchedCategories.isNotEmpty()) {
+                        item(key = "section_categories") {
+                            Text(
+                                text = "CATEGORIES",
+                                style = SignalTheme.typography.metaSource,
+                                color = colors.mute,
+                                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 10.dp)
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 20.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                for (cat in matchedCategories) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(colors.ink)
+                                            .signalPressScale(0.96f)
+                                            .clickable {
+                                                haptics.tick()
+                                                submitSearch(cat)
+                                                query = cat
+                                            }
+                                            .padding(horizontal = 18.dp, vertical = 9.dp)
+                                    ) {
+                                        Text(
+                                            text = cat,
+                                            color = colors.bg,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            HorizontalDivider(color = colors.line, thickness = 1.dp)
+                        }
+                    }
+
+                    // 2. Matched Sources Section
+                    if (matchedSources.isNotEmpty()) {
+                        item(key = "section_sources") {
+                            Text(
+                                text = "SOURCES",
+                                style = SignalTheme.typography.metaSource,
+                                color = colors.mute,
+                                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp)
+                            )
+                        }
+
+                        itemsIndexed(matchedSources, key = { _, s -> "source_${s.id}" }) { _, source ->
+                            SourceSearchResultRow(
+                                source = source,
+                                queryTerms = queryTerms,
                                 onClick = {
                                     submitSearch(query)
-                                    onArticleClick(article.id)
+                                    onSourceClick(source.id)
                                 }
                             )
+                        }
+
+                        item(key = "divider_sources_articles") {
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+
+                    // 3. Matched Articles Section
+                    if (searchArticles.isNotEmpty()) {
+                        item(key = "section_articles") {
+                            Text(
+                                text = "ARTICLES",
+                                style = SignalTheme.typography.metaSource,
+                                color = colors.mute,
+                                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp)
+                            )
+                        }
+
+                        itemsIndexed(searchArticles, key = { _, item -> "article_${item.id}" }) { index, article ->
+                            StaggeredItem(index = index) {
+                                SearchResultRow(
+                                    article = article,
+                                    queryTerms = queryTerms,
+                                    onClick = {
+                                        submitSearch(query)
+                                        onArticleClick(article.id)
+                                    }
+                                )
+                            }
                         }
                     }
 
                     item {
-                        Spacer(modifier = Modifier.height(32.dp))
+                        Spacer(modifier = Modifier.height(36.dp))
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SourceSearchResultRow(
+    source: SourceEntity,
+    queryTerms: List<String>,
+    onClick: () -> Unit
+) {
+    val colors = SignalTheme.colors
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .signalPressScale(0.985f)
+            .clickable { onClick() }
+    ) {
+        HorizontalDivider(color = colors.line, thickness = 1.dp)
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            SourceLogo(
+                siteUrl = source.siteUrl,
+                sourceName = source.name,
+                size = 46.dp,
+                shape = RoundedCornerShape(13.dp),
+                fontSize = 15.sp
+            )
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = highlightMatches(source.name, queryTerms),
+                    style = SignalTheme.typography.rowHeadline,
+                    color = colors.ink,
+                    fontSize = 17.sp
+                )
+
+                if (source.description.isNotBlank()) {
+                    Text(
+                        text = highlightMatches(source.description, queryTerms),
+                        color = colors.mute,
+                        fontSize = 13.sp,
+                        maxLines = 1
+                    )
+                }
+            }
+
+            Text(
+                text = "Open ↗",
+                color = colors.mute,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
@@ -399,7 +634,7 @@ private fun SearchResultRow(
                         )
                     }
                     Text(
-                        text = article.sourceName,
+                        text = highlightMatches(article.sourceName, queryTerms),
                         style = SignalTheme.typography.metaSource,
                         color = colors.ink
                     )
