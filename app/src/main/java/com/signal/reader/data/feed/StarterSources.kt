@@ -108,6 +108,13 @@ object StarterSources {
         // Visual Art & Culture
         StarterSource(
             group = "Visual Art & Design",
+            name = "WALLPAPER*",
+            description = "Design, architecture, interiors and global style",
+            siteUrl = "https://www.wallpaper.com",
+            feedUrl = "https://www.wallpaper.com/feeds.xml"
+        ),
+        StarterSource(
+            group = "Visual Art & Design",
             name = "Booooooom",
             description = "Contemporary art, emerging artists and creative culture",
             siteUrl = "https://www.booooooom.com",
