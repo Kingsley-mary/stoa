@@ -1,5 +1,6 @@
 package com.signal.reader.ui.sources
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -96,6 +97,7 @@ fun AddSourcesScreen(
 
     val selectedStarter = remember { mutableStateListOf<StarterSource>() }
     val customAdded = remember { mutableStateListOf<DiscoveryResult.Found>() }
+    val optimisticallyFollowed = remember { mutableStateListOf<String>() }
 
     val filteredGroups = remember(searchQuery) {
         val q = searchQuery.trim().lowercase()
@@ -135,12 +137,26 @@ fun AddSourcesScreen(
                     feedUrl = it.feedUrl
                 )
             }
-            repository.addSourcesBatch(selectedStarter + customAsStarter)
+            if (selectedStarter.isNotEmpty() || customAsStarter.isNotEmpty()) {
+                repository.addSourcesBatch(selectedStarter + customAsStarter)
+            }
             onFinish()
         }
     }
 
     val totalSelected = selectedStarter.size + customAdded.size
+
+    BackHandler {
+        if (isFirstLaunch) {
+            onSkip()
+        } else {
+            if (totalSelected > 0) {
+                finishAndSave()
+            } else {
+                onFinish()
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -177,7 +193,13 @@ fun AddSourcesScreen(
                 Box(
                     modifier = Modifier
                         .size(28.dp)
-                        .signalPressScale(0.96f) { onFinish() },
+                        .signalPressScale(0.96f) {
+                            if (totalSelected > 0) {
+                                finishAndSave()
+                            } else {
+                                onFinish()
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     BackChevron(color = colors.ink)
@@ -341,7 +363,8 @@ fun AddSourcesScreen(
             item {
                 when (val result = discoveryResult) {
                     is DiscoveryResult.Found -> {
-                        val isAlreadyFollowed = followedUrls.contains(result.feedUrl.lowercase())
+                        val isAlreadyFollowed = followedUrls.contains(result.feedUrl.lowercase()) ||
+                                optimisticallyFollowed.contains(result.feedUrl.lowercase())
                         val isAlreadyAdded = customAdded.any { it.feedUrl.equals(result.feedUrl, true) }
 
                         AnimatedVisibility(
@@ -397,9 +420,22 @@ fun AddSourcesScreen(
                                         AddTogglePill(
                                             isAdded = isAlreadyAdded,
                                             onToggle = {
-                                                haptics.tick()
-                                                if (isAlreadyAdded) customAdded.remove(result)
-                                                else customAdded.add(result)
+                                                if (isFirstLaunch) {
+                                                    haptics.tick()
+                                                    if (isAlreadyAdded) customAdded.remove(result)
+                                                    else customAdded.add(result)
+                                                } else {
+                                                    haptics.pop()
+                                                    optimisticallyFollowed.add(result.feedUrl.lowercase())
+                                                    coroutineScope.launch {
+                                                        repository.addSource(
+                                                            name = result.name,
+                                                            siteUrl = result.siteUrl,
+                                                            feedUrl = result.feedUrl,
+                                                            description = result.description
+                                                        )
+                                                    }
+                                                }
                                             }
                                         )
                                     }
@@ -477,7 +513,8 @@ fun AddSourcesScreen(
                         )
                     }
                     itemsIndexed(sourcesInGroup, key = { _, s -> s.feedUrl }) { idx, source ->
-                        val isFollowing = followedUrls.contains(source.feedUrl.lowercase())
+                        val isFollowing = followedUrls.contains(source.feedUrl.lowercase()) ||
+                                optimisticallyFollowed.contains(source.feedUrl.lowercase())
                         val isAdded = selectedStarter.contains(source)
                         StaggeredItem(index = (staggeredItemIndex + idx).coerceAtMost(10)) {
                             StarterRow(
@@ -487,9 +524,22 @@ fun AddSourcesScreen(
                                 isFollowing = isFollowing,
                                 isAdded = isAdded,
                                 onToggle = {
-                                    haptics.tick()
-                                    if (isAdded) selectedStarter.remove(source)
-                                    else selectedStarter.add(source)
+                                    if (isFirstLaunch) {
+                                        haptics.tick()
+                                        if (isAdded) selectedStarter.remove(source)
+                                        else selectedStarter.add(source)
+                                    } else {
+                                        haptics.pop()
+                                        optimisticallyFollowed.add(source.feedUrl.lowercase())
+                                        coroutineScope.launch {
+                                            repository.addSource(
+                                                name = source.name,
+                                                siteUrl = source.siteUrl,
+                                                feedUrl = source.feedUrl,
+                                                description = source.description
+                                            )
+                                        }
+                                    }
                                 }
                             )
                         }
@@ -527,7 +577,13 @@ fun AddSourcesScreen(
                     .background(if (isButtonEnabled) colors.ink else colors.bg)
                     .border(1.dp, if (isButtonEnabled) colors.ink else colors.line, CircleShape)
                     .signalPressScale(0.96f) {
-                        if (isButtonEnabled) finishAndSave()
+                        if (isButtonEnabled) {
+                            if (totalSelected > 0) {
+                                finishAndSave()
+                            } else {
+                                onFinish()
+                            }
+                        }
                     }
                     .padding(vertical = 17.dp),
                 contentAlignment = Alignment.Center

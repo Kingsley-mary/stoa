@@ -10,201 +10,273 @@ data class StarterSource(
 
 object StarterSources {
     val ALL: List<StarterSource> = listOf(
-        // Design & Architecture
+        // Architecture
         StarterSource(
-            group = "Design & Architecture",
-            name = "WALLPAPER*",
-            description = "Design, interiors, fashion and architecture",
-            siteUrl = "https://www.wallpaper.com",
-            feedUrl = "https://www.wallpaper.com/feeds.xml"
-        ),
-        StarterSource(
-            group = "Design & Architecture",
-            name = "Dezeen",
-            description = "Architecture, interiors and design magazine",
-            siteUrl = "https://www.dezeen.com",
-            feedUrl = "https://www.dezeen.com/feed/"
-        ),
-        StarterSource(
-            group = "Design & Architecture",
-            name = "Design Milk",
-            description = "Modern design, interiors, architecture and art",
-            siteUrl = "https://design-milk.com",
-            feedUrl = "https://design-milk.com/feed/"
-        ),
-        StarterSource(
-            group = "Design & Architecture",
-            name = "Sight Unseen",
-            description = "Contemporary furniture, visual arts and ideas",
-            siteUrl = "https://www.sightunseen.com",
-            feedUrl = "https://www.sightunseen.com/feed/"
-        ),
-        StarterSource(
-            group = "Design & Architecture",
+            group = "Architecture",
             name = "ArchDaily",
             description = "The world's most visited architecture publication",
             siteUrl = "https://www.archdaily.com",
             feedUrl = "https://www.archdaily.com/rss.xml"
         ),
         StarterSource(
-            group = "Design & Architecture",
+            group = "Architecture",
+            name = "Dezeen",
+            description = "Architecture, interiors and modern spaces magazine",
+            siteUrl = "https://www.dezeen.com",
+            feedUrl = "https://www.dezeen.com/feed/"
+        ),
+        StarterSource(
+            group = "Architecture",
             name = "Designboom",
-            description = "Architecture, industrial design and installations",
+            description = "Architecture, installations and spatial design",
             siteUrl = "https://www.designboom.com",
             feedUrl = "https://www.designboom.com/feed"
         ),
         StarterSource(
-            group = "Design & Architecture",
-            name = "Creative Boom",
-            description = "Illustration, visual arts and studio practice",
-            siteUrl = "https://www.creativeboom.com",
-            feedUrl = "https://www.creativeboom.com/feed"
+            group = "Architecture",
+            name = "WALLPAPER*",
+            description = "Design, architecture, interiors and global style",
+            siteUrl = "https://www.wallpaper.com",
+            feedUrl = "https://www.wallpaper.com/feeds.xml"
         ),
         StarterSource(
-            group = "Design & Architecture",
-            name = "Creative Review",
-            description = "Branding, graphic design and visual culture",
-            siteUrl = "https://www.creativereview.co.uk",
-            feedUrl = "https://www.creativereview.co.uk/feed"
+            group = "Architecture",
+            name = "BLDGBLOG",
+            description = "Architectural conjecture, landscape and urban futures",
+            siteUrl = "https://www.bldgblog.com",
+            feedUrl = "https://www.bldgblog.com/feed/"
+        ),
+
+        // Product & Industrial Design
+        StarterSource(
+            group = "Product Design",
+            name = "Yanko Design",
+            description = "Industrial design, concept ideas and modern products",
+            siteUrl = "https://www.yankodesign.com",
+            feedUrl = "https://www.yankodesign.com/feed/"
         ),
         StarterSource(
-            group = "Design & Architecture",
-            name = "It’s Nice That",
-            description = "Art, typography and creative visual culture",
-            siteUrl = "https://www.itsnicethat.com",
-            feedUrl = "https://feeds2.feedburner.com/itsnicethat/SlXC"
+            group = "Product Design",
+            name = "UX Collective",
+            description = "User experience, product thinking and design craft",
+            siteUrl = "https://uxdesign.cc",
+            feedUrl = "https://uxdesign.cc/feed"
         ),
         StarterSource(
-            group = "Design & Architecture",
+            group = "Product Design",
+            name = "Fast Company Design",
+            description = "How design impacts products, business and society",
+            siteUrl = "https://www.fastcompany.com/section/design",
+            feedUrl = "https://www.fastcompany.com/section/design/rss"
+        ),
+        StarterSource(
+            group = "Product Design",
+            name = "Sidebar",
+            description = "The 5 best design links curated every day",
+            siteUrl = "https://sidebar.io",
+            feedUrl = "https://sidebar.io/feed.xml"
+        ),
+        StarterSource(
+            group = "Product Design",
+            name = "Design Milk",
+            description = "Modern furniture, industrial design and decor",
+            siteUrl = "https://design-milk.com",
+            feedUrl = "https://design-milk.com/feed/"
+        ),
+        StarterSource(
+            group = "Product Design",
+            name = "Sight Unseen",
+            description = "Contemporary furniture, objects and studio craft",
+            siteUrl = "https://www.sightunseen.com",
+            feedUrl = "https://www.sightunseen.com/feed/"
+        ),
+        StarterSource(
+            group = "Product Design",
             name = "swissmiss",
-            description = "Design curation and visual inspiration",
+            description = "Visual design curation, tools and inspiration",
             siteUrl = "https://www.swiss-miss.com",
             feedUrl = "https://www.swiss-miss.com/feed"
         ),
 
-        // Art & Photography
+        // Visual Art & Culture
         StarterSource(
-            group = "Art & Photography",
+            group = "Visual Art & Design",
             name = "Colossal",
             description = "Visual art, sculpture, photography and craft",
             siteUrl = "https://www.thisiscolossal.com",
             feedUrl = "https://www.thisiscolossal.com/feed/"
         ),
         StarterSource(
-            group = "Art & Photography",
+            group = "Visual Art & Design",
+            name = "Hyperallergic",
+            description = "Playful, radical and independent art perspectives",
+            siteUrl = "https://hyperallergic.com",
+            feedUrl = "https://hyperallergic.com/feed/"
+        ),
+        StarterSource(
+            group = "Visual Art & Design",
+            name = "The Art Newspaper",
+            description = "Global visual art news, exhibitions and market reports",
+            siteUrl = "https://www.theartnewspaper.com",
+            feedUrl = "https://www.theartnewspaper.com/rss.xml"
+        ),
+        StarterSource(
+            group = "Visual Art & Design",
+            name = "Juxtapoz",
+            description = "Underground art, painting, murals and street culture",
+            siteUrl = "https://www.juxtapoz.com",
+            feedUrl = "https://www.juxtapoz.com/feed/"
+        ),
+        StarterSource(
+            group = "Visual Art & Design",
+            name = "Creative Boom",
+            description = "Illustration, studio practice and visual arts",
+            siteUrl = "https://www.creativeboom.com",
+            feedUrl = "https://www.creativeboom.com/feed"
+        ),
+        StarterSource(
+            group = "Visual Art & Design",
+            name = "Creative Review",
+            description = "Branding, graphic design and visual culture",
+            siteUrl = "https://www.creativereview.co.uk",
+            feedUrl = "https://www.creativereview.co.uk/feed"
+        ),
+        StarterSource(
+            group = "Visual Art & Design",
+            name = "It’s Nice That",
+            description = "Art, typography and creative visual inspiration",
+            siteUrl = "https://www.itsnicethat.com",
+            feedUrl = "https://feeds2.feedburner.com/itsnicethat/SlXC"
+        ),
+        StarterSource(
+            group = "Visual Art & Design",
             name = "Aperture",
             description = "Fine art photography, photo essays and theory",
             siteUrl = "https://aperture.org",
             feedUrl = "https://aperture.org/feed/"
         ),
         StarterSource(
-            group = "Art & Photography",
+            group = "Visual Art & Design",
             name = "Craig Mod",
             description = "Photography, walking in Japan and book craft",
             siteUrl = "https://craigmod.com",
             feedUrl = "https://craigmod.com/index.xml"
         ),
 
-        // Tech & Indie Web
+        // Science & Ideas
         StarterSource(
-            group = "Tech & Indie Web",
-            name = "WIRED",
-            description = "Technology, science and culture",
-            siteUrl = "https://www.wired.com",
-            feedUrl = "https://www.wired.com/feed/rss"
-        ),
-        StarterSource(
-            group = "Tech & Indie Web",
-            name = "The Verge",
-            description = "Hardware, apps, digital culture and policy",
-            siteUrl = "https://www.theverge.com",
-            feedUrl = "https://www.theverge.com/rss/index.xml"
-        ),
-        StarterSource(
-            group = "Tech & Indie Web",
-            name = "Ars Technica",
-            description = "Technical deep dives, policy and analysis",
-            siteUrl = "https://arstechnica.com",
-            feedUrl = "https://feeds.arstechnica.com/arstechnica/index"
-        ),
-        StarterSource(
-            group = "Tech & Indie Web",
-            name = "Daring Fireball",
-            description = "Apple, software craft and media commentary",
-            siteUrl = "https://daringfireball.net",
-            feedUrl = "https://daringfireball.net/feeds/main"
-        ),
-        StarterSource(
-            group = "Tech & Indie Web",
-            name = "Rest of World",
-            description = "Global tech reporting beyond Silicon Valley",
-            siteUrl = "https://restofworld.org",
-            feedUrl = "https://restofworld.org/feed/latest"
-        ),
-        StarterSource(
-            group = "Tech & Indie Web",
-            name = "Simon Willison",
-            description = "Web architecture, LLMs and open source",
-            siteUrl = "https://simonwillison.net",
-            feedUrl = "https://simonwillison.net/atom/entries/"
-        ),
-        StarterSource(
-            group = "Tech & Indie Web",
-            name = "Hacker News",
-            description = "Curated links in computing and technology",
-            siteUrl = "https://news.ycombinator.com",
-            feedUrl = "https://news.ycombinator.com/rss"
-        ),
-        StarterSource(
-            group = "Tech & Indie Web",
-            name = "Fast Company",
-            description = "Innovation, design and modern leadership",
-            siteUrl = "https://www.fastcompany.com",
-            feedUrl = "https://www.fastcompany.com/rss"
-        ),
-
-        // Ideas & Science
-        StarterSource(
-            group = "Ideas & Science",
+            group = "Science",
             name = "Quanta Magazine",
-            description = "Mathematics, physics and biological research",
+            description = "Illuminating mathematics, physics and biology",
             siteUrl = "https://www.quantamagazine.org",
             feedUrl = "https://www.quantamagazine.org/feed/"
         ),
         StarterSource(
-            group = "Ideas & Science",
+            group = "Science",
             name = "Nautilus",
             description = "Science connected to philosophy and culture",
             siteUrl = "https://nautil.us",
             feedUrl = "https://nautil.us/feed/"
         ),
         StarterSource(
-            group = "Ideas & Science",
-            name = "Aeon",
-            description = "Longform essays in philosophy and society",
-            siteUrl = "https://aeon.co",
-            feedUrl = "https://aeon.co/feed.rss"
+            group = "Science",
+            name = "Undark Magazine",
+            description = "Explores the intersection of science and society",
+            siteUrl = "https://undark.org",
+            feedUrl = "https://undark.org/feed/"
         ),
         StarterSource(
-            group = "Ideas & Science",
+            group = "Science",
+            name = "Ars Technica Science",
+            description = "Spaceflight, climate, biology and fundamental physics",
+            siteUrl = "https://arstechnica.com/science/",
+            feedUrl = "https://feeds.arstechnica.com/arstechnica/science"
+        ),
+        StarterSource(
+            group = "Science",
+            name = "Phys.org",
+            description = "Daily discoveries in physics, space and materials",
+            siteUrl = "https://phys.org",
+            feedUrl = "https://phys.org/rss-feed/"
+        ),
+        StarterSource(
+            group = "Science",
+            name = "New Scientist",
+            description = "International news on science and technology",
+            siteUrl = "https://www.newscientist.com",
+            feedUrl = "https://www.newscientist.com/feed/home/"
+        ),
+        StarterSource(
+            group = "Science",
             name = "MIT Technology Review",
-            description = "Authoritative analysis on emerging tech",
+            description = "Authoritative analysis on emerging technologies",
             siteUrl = "https://www.technologyreview.com",
             feedUrl = "https://www.technologyreview.com/feed"
         ),
         StarterSource(
-            group = "Ideas & Science",
-            name = "Literary Hub",
-            description = "Contemporary fiction, critique and craft",
-            siteUrl = "https://lithub.com",
-            feedUrl = "https://lithub.com/feed/"
+            group = "Science",
+            name = "Aeon",
+            description = "Longform essays in science, philosophy and humanity",
+            siteUrl = "https://aeon.co",
+            feedUrl = "https://aeon.co/feed.rss"
+        ),
+
+        // Technology & Culture
+        StarterSource(
+            group = "Tech & Culture",
+            name = "Rest of World",
+            description = "Global tech reporting beyond Silicon Valley",
+            siteUrl = "https://restofworld.org",
+            feedUrl = "https://restofworld.org/feed/latest"
         ),
         StarterSource(
-            group = "Ideas & Science",
+            group = "Tech & Culture",
+            name = "WIRED",
+            description = "Technology, science, business and culture",
+            siteUrl = "https://www.wired.com",
+            feedUrl = "https://www.wired.com/feed/rss"
+        ),
+        StarterSource(
+            group = "Tech & Culture",
+            name = "The Verge",
+            description = "Hardware, apps, digital culture and policy",
+            siteUrl = "https://www.theverge.com",
+            feedUrl = "https://www.theverge.com/rss/index.xml"
+        ),
+        StarterSource(
+            group = "Tech & Culture",
+            name = "Daring Fireball",
+            description = "Apple, software craft and media commentary",
+            siteUrl = "https://daringfireball.net",
+            feedUrl = "https://daringfireball.net/feeds/main"
+        ),
+        StarterSource(
+            group = "Tech & Culture",
+            name = "Simon Willison",
+            description = "Web architecture, LLMs and open source craft",
+            siteUrl = "https://simonwillison.net",
+            feedUrl = "https://simonwillison.net/atom/entries/"
+        ),
+        StarterSource(
+            group = "Tech & Culture",
+            name = "Hacker News",
+            description = "Curated links in computing, science and technology",
+            siteUrl = "https://news.ycombinator.com",
+            feedUrl = "https://news.ycombinator.com/rss"
+        ),
+        StarterSource(
+            group = "Tech & Culture",
             name = "kottke.org",
             description = "Art, technology, science and visual curiosities",
             siteUrl = "https://kottke.org",
             feedUrl = "https://feeds.kottke.org/main"
+        ),
+        StarterSource(
+            group = "Tech & Culture",
+            name = "Literary Hub",
+            description = "Contemporary fiction, critique and literary craft",
+            siteUrl = "https://lithub.com",
+            feedUrl = "https://lithub.com/feed/"
         )
     )
 }

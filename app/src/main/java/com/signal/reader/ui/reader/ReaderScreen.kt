@@ -9,18 +9,22 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,6 +36,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,9 +62,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,6 +82,7 @@ import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.ui.components.BackChevron
 import com.signal.reader.ui.components.BookmarkIcon
+import com.signal.reader.ui.components.ImageViewerDialog
 import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.TimeUtils
 import com.signal.reader.ui.components.rememberSignalHaptics
@@ -89,6 +102,7 @@ fun ReaderScreen(
     settingsManager: SettingsManager,
     onBack: () -> Unit,
     onOpenSourcePage: (Long) -> Unit,
+    onOpenWebUrl: ((url: String, title: String?) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
@@ -109,24 +123,33 @@ fun ReaderScreen(
 
     val listState = rememberLazyListState()
 
-    // Reading progress calculation (tracks scroll from 0 to 1)
+    // Smooth reading progress calculation across all items and scroll offset
     val readingProgress by remember {
         derivedStateOf {
-            val totalItems = listState.layoutInfo.totalItemsCount
-            if (totalItems <= 1) 0f
-            else {
-                val firstIdx = listState.firstVisibleItemIndex.toFloat()
-                val offset = listState.firstVisibleItemScrollOffset.toFloat()
-                val progress = (firstIdx / (totalItems - 1)).coerceIn(0f, 1f)
-                progress
+            val layoutInfo = listState.layoutInfo
+            val visible = layoutInfo.visibleItemsInfo
+            val total = layoutInfo.totalItemsCount
+            if (visible.isEmpty() || total <= 1) {
+                0f
+            } else {
+                val lastItem = visible.last()
+                if (lastItem.index == total - 1) {
+                    val viewportBottom = layoutInfo.viewportEndOffset
+                    val itemBottom = lastItem.offset + lastItem.size
+                    if (itemBottom <= viewportBottom) 1f
+                    else {
+                        val progress = 1f - (itemBottom - viewportBottom).toFloat() / lastItem.size.toFloat()
+                        progress.coerceIn(0.85f, 1f)
+                    }
+                } else {
+                    val firstItem = visible.first()
+                    val itemFraction = if (firstItem.size > 0) {
+                        listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size.toFloat()
+                    } else 0f
+                    val currentPos = firstItem.index.toFloat() + itemFraction
+                    (currentPos / (total - 1).coerceAtLeast(1)).coerceIn(0f, 1f)
+                }
             }
-        }
-    }
-
-    // Header visibility on scroll with derivedStateOf to prevent scroll lag
-    val isHeaderVisible by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex == 0 || listState.firstVisibleItemScrollOffset < 120
         }
     }
 
@@ -135,6 +158,9 @@ fun ReaderScreen(
     val currentFontSizeIndex = settings.textSizeIndex.coerceIn(0, fontSizes.size - 1)
     val currentFontSize = fontSizes[currentFontSizeIndex]
     var isAaPanelOpen by remember { mutableStateOf(false) }
+
+    // Fullscreen pinch-to-zoom image viewer state
+    var activeZoomImage by remember { mutableStateOf<Pair<String, String?>?>(null) }
 
     // Title entrance animation (titleUp from translateY(40px), 500ms ease-out, delay 120ms)
     val titleOffsetY = remember { Animatable(40f) }
@@ -152,16 +178,25 @@ fun ReaderScreen(
 
     val currentArticle = article ?: return
 
-    fun openInCustomTabs(url: String) {
+    fun openWeb(url: String, title: String? = null) {
         if (url.isNotBlank()) {
-            try {
-                val intent = CustomTabsIntent.Builder()
-                    .setShowTitle(true)
-                    .build()
-                intent.launchUrl(context, Uri.parse(url))
-            } catch (_: Exception) {
+            if (onOpenWebUrl != null) {
+                onOpenWebUrl(url, title)
+            } else {
+                try {
+                    val intent = CustomTabsIntent.Builder()
+                        .setShowTitle(true)
+                        .build()
+                    intent.launchUrl(context, Uri.parse(url))
+                } catch (_: Exception) {
+                }
             }
         }
+    }
+
+    val blocks = remember(currentArticle.fullContent, currentArticle.excerpt, currentArticle.imageUrl) {
+        val raw = currentArticle.fullContent ?: currentArticle.excerpt
+        parseContentBlocks(raw, heroImageUrl = currentArticle.imageUrl)
     }
 
     Box(
@@ -170,20 +205,45 @@ fun ReaderScreen(
             .background(colors.bg)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Top reading-progress bar (sticky 2px ink line at header bottom: #prog)
+            // Sticky top header bar with BackChevron and reading progress bar matching design/reader-mockup.html
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.dp)
+                    .background(colors.bg)
                     .statusBarsPadding()
-                    .background(colors.line)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(readingProgress)
-                        .height(2.dp)
-                        .background(colors.ink)
-                )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .signalPressScale(0.94f) { onBack() },
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            BackChevron(color = colors.ink)
+                        }
+                    }
+                    // Bottom border line with reading progress indicator (#prog)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .background(colors.line)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(readingProgress.coerceIn(0f, 1f))
+                                .height(2.dp)
+                                .background(colors.ink)
+                        )
+                    }
+                }
             }
 
             // Article Content
@@ -193,12 +253,12 @@ fun ReaderScreen(
                     .weight(1f)
                     .padding(horizontal = 20.dp)
             ) {
-                item {
-                    Spacer(modifier = Modifier.height(14.dp))
+                item(key = "spacer_top") {
+                    Spacer(modifier = Modifier.height(18.dp))
                 }
 
                 // Square 1:1 image with 26dp radius and Category Tag pill (.r-pic .tag)
-                item {
+                item(key = "hero_pic") {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -211,6 +271,13 @@ fun ReaderScreen(
                             )
                             .clip(RoundedCornerShape(26.dp))
                             .background(colors.card)
+                            .then(
+                                if (!currentArticle.imageUrl.isNullOrBlank()) {
+                                    Modifier.clickable {
+                                        activeZoomImage = Pair(currentArticle.imageUrl, currentArticle.title)
+                                    }
+                                } else Modifier
+                            )
                     ) {
                         if (!currentArticle.imageUrl.isNullOrBlank()) {
                             AsyncImage(
@@ -241,7 +308,7 @@ fun ReaderScreen(
                 }
 
                 // Title with titleUp entrance animation (#rtitle)
-                item {
+                item(key = "title") {
                     Text(
                         text = currentArticle.title.uppercase(),
                         style = SignalTheme.typography.readerTitle,
@@ -254,24 +321,54 @@ fun ReaderScreen(
                 }
 
                 // Facts DL block (#rdl) with staggered entrance
-                item {
+                item(key = "facts") {
                     FactsBlock(
                         article = currentArticle,
                         onSourceClick = { onOpenSourcePage(currentArticle.sourceId) }
                     )
                 }
 
-                // Body content (#rtext)
-                item {
+                item(key = "spacer_body") {
                     Spacer(modifier = Modifier.height(26.dp))
-                    ArticleBody(
-                        article = currentArticle,
+                }
+
+                // Sequential content blocks (paragraphs, inline images, headings, quotes, lists)
+                val blocksToRender = if (currentArticle.isExcerptOnly) blocks.take(3) else blocks
+                itemsIndexed(blocksToRender, key = { idx, _ -> "content_block_$idx" }) { _, block ->
+                    RenderContentBlock(
+                        block = block,
                         fontSize = currentFontSize,
-                        onReadFullClick = { openInCustomTabs(currentArticle.url) }
+                        onImageClick = { url, caption ->
+                            activeZoomImage = Pair(url, caption)
+                        },
+                        onLinkClick = { url ->
+                            openWeb(url, null)
+                        }
                     )
                 }
 
-                item {
+                // Excerpt-only CTA (#cta)
+                if (currentArticle.isExcerptOnly) {
+                    item(key = "excerpt_gradient") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp)
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(Color.Transparent, colors.bg)
+                                    )
+                                )
+                        )
+                    }
+                    item(key = "excerpt_cta") {
+                        ExcerptCta(
+                            onReadFullClick = { openWeb(currentArticle.url, currentArticle.title) }
+                        )
+                    }
+                }
+
+                item(key = "spacer_bottom") {
                     Spacer(modifier = Modifier.height(48.dp))
                 }
             }
@@ -279,16 +376,20 @@ fun ReaderScreen(
             // Aa Settings Sheet (.sheet)
             AnimatedVisibility(
                 visible = isAaPanelOpen,
-                enter = slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = SignalMotion.easeTween(300)
-                ),
-                exit = slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = SignalMotion.easeTween(250)
-                )
+                enter = expandVertically(
+                    animationSpec = SignalMotion.easeTween(280),
+                    expandFrom = Alignment.Bottom
+                ) + fadeIn(SignalMotion.easeTween(200)),
+                exit = shrinkVertically(
+                    animationSpec = SignalMotion.easeTween(220),
+                    shrinkTowards = Alignment.Bottom
+                ) + fadeOut(SignalMotion.easeTween(180))
             ) {
-                Column(modifier = Modifier.fillMaxWidth().background(colors.bg)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(colors.bg)
+                ) {
                     HorizontalDivider(color = colors.line, thickness = 1.dp)
                     Row(
                         modifier = Modifier
@@ -329,22 +430,28 @@ fun ReaderScreen(
                             )
 
                             // Theme toggle button matching mockup (#theme)
-                            val isDarkTheme = settings.theme == "dark"
+                            val isSystemDark = isSystemInDarkTheme()
+                            val isDarkActive = when (settings.theme) {
+                                "dark" -> true
+                                "light" -> false
+                                else -> isSystemDark
+                            }
+
                             Box(
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .background(if (isDarkTheme) colors.ink else colors.bg)
+                                    .background(if (isDarkActive) colors.ink else colors.bg)
                                     .border(1.dp, colors.ink, CircleShape)
                                     .signalPressScale(0.96f) {
                                         haptics.tick()
-                                        settingsManager.updateTheme(if (isDarkTheme) "light" else "dark")
+                                        settingsManager.updateTheme(if (isDarkActive) "light" else "dark")
                                     }
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = if (isDarkTheme) "Light" else "Dark",
-                                    color = if (isDarkTheme) colors.bg else colors.ink,
+                                    text = "Dark",
+                                    color = if (isDarkActive) colors.bg else colors.ink,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -423,7 +530,7 @@ fun ReaderScreen(
                     modifier = Modifier
                         .weight(1f)
                         .signalPressScale(0.96f) {
-                            openInCustomTabs(currentArticle.url)
+                            openWeb(currentArticle.url, currentArticle.title)
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -436,31 +543,13 @@ fun ReaderScreen(
             }
         }
 
-        // Back Chevron Header (hides on scroll down, returns on scroll up)
-        val headerOffsetY by animateFloatAsState(
-            targetValue = if (isHeaderVisible) 0f else -100f,
-            animationSpec = SignalMotion.easeTween(280),
-            label = "headerScroll"
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .offset { IntOffset(0, (headerOffsetY * density).roundToInt()) }
-                .statusBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(colors.bg.copy(alpha = 0.9f))
-                    .signalPressScale(0.96f) { onBack() },
-                contentAlignment = Alignment.Center
-            ) {
-                BackChevron(color = colors.ink)
-            }
+        // Fullscreen Pinch-to-Zoom Lightbox
+        activeZoomImage?.let { (url, caption) ->
+            ImageViewerDialog(
+                imageUrl = url,
+                caption = caption,
+                onDismiss = { activeZoomImage = null }
+            )
         }
     }
 }
@@ -546,11 +635,11 @@ private fun FactRow(
 }
 
 private sealed class ContentBlock {
-    data class Paragraph(val text: String) : ContentBlock()
+    data class Paragraph(val text: String, val html: String = text) : ContentBlock()
     data class Heading(val text: String, val level: Int) : ContentBlock()
     data class Image(val url: String, val caption: String? = null) : ContentBlock()
     data class Quote(val text: String) : ContentBlock()
-    data class BulletList(val items: List<String>) : ContentBlock()
+    data class BulletList(val items: List<String>, val htmlItems: List<String> = items) : ContentBlock()
 }
 
 private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List<ContentBlock> {
@@ -594,7 +683,7 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                     }
                 } else {
                     if (text.isNotBlank()) {
-                        blocks.add(ContentBlock.Paragraph(text))
+                        blocks.add(ContentBlock.Paragraph(text = text, html = el.html()))
                     }
                     if (img != null) {
                         val src = img.attr("src").ifBlank { img.attr("data-src") }.trim()
@@ -625,8 +714,9 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
             }
             "ul", "ol" -> {
                 val listItems = el.select("li").map { it.text().trim() }.filter { it.isNotBlank() }
+                val htmlItems = el.select("li").map { it.html().trim() }.filter { it.isNotBlank() }
                 if (listItems.isNotEmpty()) {
-                    blocks.add(ContentBlock.BulletList(listItems))
+                    blocks.add(ContentBlock.BulletList(items = listItems, htmlItems = htmlItems))
                     processedElements.addAll(el.getAllElements())
                 }
             }
@@ -637,24 +727,96 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
         val rawText = doc.text().trim()
         if (rawText.isNotBlank()) {
             val fallbackParagraphs = rawText.split("\n\n").map { it.trim() }.filter { it.isNotBlank() }
-            fallbackParagraphs.forEach { blocks.add(ContentBlock.Paragraph(it)) }
+            fallbackParagraphs.forEach { blocks.add(ContentBlock.Paragraph(text = it, html = it)) }
         }
     }
 
     return blocks
 }
 
+private fun appendHtmlNode(
+    builder: AnnotatedString.Builder,
+    node: org.jsoup.nodes.Node,
+    inkColor: Color,
+    onLinkClick: (String) -> Unit
+) {
+    when (node) {
+        is org.jsoup.nodes.TextNode -> {
+            builder.append(node.text())
+        }
+        is org.jsoup.nodes.Element -> {
+            when (node.tagName().lowercase()) {
+                "a" -> {
+                    val href = node.attr("href").trim()
+                    val linkText = node.text()
+                    if (href.isNotBlank()) {
+                        builder.withLink(
+                            LinkAnnotation.Url(
+                                url = href,
+                                styles = TextLinkStyles(
+                                    style = SpanStyle(
+                                        color = inkColor,
+                                        textDecoration = TextDecoration.Underline,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                ),
+                                linkInteractionListener = { annotation ->
+                                    val target = (annotation as? LinkAnnotation.Url)?.url ?: href
+                                    onLinkClick(target)
+                                }
+                            )
+                        ) {
+                            append(linkText)
+                        }
+                    } else {
+                        builder.append(linkText)
+                    }
+                }
+                "b", "strong" -> {
+                    builder.withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                        node.childNodes().forEach { appendHtmlNode(builder, it, inkColor, onLinkClick) }
+                    }
+                }
+                "i", "em" -> {
+                    builder.withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                        node.childNodes().forEach { appendHtmlNode(builder, it, inkColor, onLinkClick) }
+                    }
+                }
+                else -> {
+                    node.childNodes().forEach { appendHtmlNode(builder, it, inkColor, onLinkClick) }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun RenderContentBlock(
     block: ContentBlock,
-    fontSize: androidx.compose.ui.unit.TextUnit
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    onImageClick: (url: String, caption: String?) -> Unit,
+    onLinkClick: (url: String) -> Unit
 ) {
     val colors = SignalTheme.colors
 
     when (block) {
         is ContentBlock.Paragraph -> {
+            val annotated = remember(block.html, colors.ink) {
+                try {
+                    val doc = Jsoup.parseBodyFragment(block.html)
+                    val pEl = doc.body().selectFirst("p") ?: doc.body()
+                    buildAnnotatedString {
+                        pEl.childNodes().forEach { node ->
+                            appendHtmlNode(this, node, colors.ink, onLinkClick)
+                        }
+                    }
+                } catch (_: Exception) {
+                    AnnotatedString(block.text)
+                }
+            }
+
             Text(
-                text = block.text,
+                text = annotated,
                 style = SignalTheme.typography.readerBody(fontSize),
                 color = colors.ink,
                 modifier = Modifier.padding(bottom = 18.dp)
@@ -671,6 +833,7 @@ private fun RenderContentBlock(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(18.dp))
                         .background(colors.card)
+                        .clickable { onImageClick(block.url, block.caption) }
                 ) {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
@@ -734,14 +897,28 @@ private fun RenderContentBlock(
                     .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                block.items.forEach { item ->
+                block.htmlItems.forEach { htmlItem ->
+                    val annotated = remember(htmlItem, colors.ink) {
+                        try {
+                            val doc = Jsoup.parseBodyFragment(htmlItem)
+                            val liEl = doc.body().selectFirst("li") ?: doc.body()
+                            buildAnnotatedString {
+                                liEl.childNodes().forEach { node ->
+                                    appendHtmlNode(this, node, colors.ink, onLinkClick)
+                                }
+                            }
+                        } catch (_: Exception) {
+                            AnnotatedString(htmlItem)
+                        }
+                    }
+
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("—", color = colors.mute, fontSize = fontSize)
                         Text(
-                            text = item,
+                            text = annotated,
                             style = SignalTheme.typography.readerBody(fontSize),
                             color = colors.ink
                         )
@@ -753,88 +930,49 @@ private fun RenderContentBlock(
 }
 
 @Composable
-private fun ArticleBody(
-    article: ArticleEntity,
-    fontSize: androidx.compose.ui.unit.TextUnit,
+private fun ExcerptCta(
     onReadFullClick: () -> Unit
 ) {
     val colors = SignalTheme.colors
 
-    val blocks = remember(article.fullContent, article.excerpt, article.imageUrl) {
-        val raw = article.fullContent ?: article.excerpt
-        parseContentBlocks(raw, heroImageUrl = article.imageUrl)
-    }
-
-    if (article.isExcerptOnly) {
-        val excerptBlocks = blocks.take(3)
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                excerptBlocks.forEach { block ->
-                    RenderContentBlock(block = block, fontSize = fontSize)
-                }
-            }
-
-            // 110px gradient fade to background (#body.cut::after)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(110.dp)
-                    .align(Alignment.BottomCenter)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, colors.bg)
-                        )
-                    )
-            )
-        }
-
-        // CTA: Read full article ↗ (#cta)
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-            horizontalAlignment = Alignment.Start
+                .clip(CircleShape)
+                .background(colors.ink)
+                .signalPressScale(0.96f) { onReadFullClick() }
+                .padding(horizontal = 26.dp, vertical = 16.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(colors.ink)
-                    .signalPressScale(0.96f) { onReadFullClick() }
-                    .padding(horizontal = 26.dp, vertical = 16.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "Read full article",
-                        color = colors.bg,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "↗",
-                        color = colors.accent,
-                        fontSize = 18.sp
-                    )
-                }
+                Text(
+                    text = "Read full article",
+                    color = colors.bg,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "↗",
+                    color = colors.accent,
+                    fontSize = 18.sp
+                )
             }
+        }
 
-            Text(
-                text = "This site only shares an excerpt in its feed. The full article opens inside the app.",
-                color = colors.mute,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                modifier = Modifier.padding(top = 12.dp)
-            )
-        }
-    } else {
-        // Full-text state: render all sequential blocks (paragraphs, inline images, headings, quotes)
-        Column(modifier = Modifier.fillMaxWidth()) {
-            blocks.forEach { block ->
-                RenderContentBlock(block = block, fontSize = fontSize)
-            }
-        }
+        Text(
+            text = "This site only shares an excerpt in its feed. The full article opens inside the app.",
+            color = colors.mute,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(top = 12.dp)
+        )
     }
 }
 
@@ -848,16 +986,19 @@ private fun PillButton(
 
     Box(
         modifier = Modifier
+            .alpha(if (enabled) 1.0f else 0.35f)
             .clip(CircleShape)
-            .background(if (enabled) colors.bg else colors.bg.copy(alpha = 0.3f))
-            .border(1.dp, if (enabled) colors.ink else colors.line, CircleShape)
-            .signalPressScale(0.96f) { onClick() }
+            .background(colors.bg)
+            .border(1.dp, colors.ink, CircleShape)
+            .signalPressScale(if (enabled) 0.96f else 1.0f) {
+                if (enabled) onClick()
+            }
             .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            color = if (enabled) colors.ink else colors.mute,
+            color = colors.ink,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium
         )

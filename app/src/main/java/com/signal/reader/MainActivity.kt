@@ -30,6 +30,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.signal.reader.ui.browser.BrowserScreen
 import com.signal.reader.ui.components.SignalBottomBar
 import com.signal.reader.ui.components.SignalTab
 import com.signal.reader.ui.home.HomeScreen
@@ -92,6 +93,18 @@ fun SignalAppNav(
 
     val colors = SignalTheme.colors
     val startDestination = "splash"
+
+    fun openWebBrowser(url: String, title: String? = null) {
+        if (url.isBlank()) return
+        val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+        val encodedTitle = title?.let { java.net.URLEncoder.encode(it, "UTF-8") }
+        val route = if (encodedTitle != null) {
+            "browser?url=$encodedUrl&title=$encodedTitle"
+        } else {
+            "browser?url=$encodedUrl"
+        }
+        navController.navigate(route)
+    }
 
     Scaffold(
         containerColor = colors.bg,
@@ -314,7 +327,12 @@ fun SignalAppNav(
                             },
                             onBack = {
                                 navController.popBackStack()
-                            }
+                            },
+                            onOpenWebsite = { url, title ->
+                                openWebBrowser(url, title)
+                            },
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedVisibilityScope = this@composable
                         )
                     }
 
@@ -368,6 +386,9 @@ fun SignalAppNav(
                                     navController.navigate("source_page/$sourceId")
                                 }
                             },
+                            onOpenWebUrl = { url, title ->
+                                openWebBrowser(url, title)
+                            },
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this@composable
                         )
@@ -415,6 +436,56 @@ fun SignalAppNav(
                             onBack = {
                                 navController.popBackStack()
                             }
+                        )
+                    }
+
+                    // In-App Browser Screen
+                    composable(
+                        route = "browser?url={url}&title={title}",
+                        arguments = listOf(
+                            navArgument("url") { type = NavType.StringType },
+                            navArgument("title") {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            }
+                        ),
+                        enterTransition = {
+                            fadeIn(SignalMotion.easeTween(250)) +
+                            slideInVertically(
+                                initialOffsetY = { 60 },
+                                animationSpec = SignalMotion.easeTween(250)
+                            )
+                        },
+                        exitTransition = {
+                            fadeOut(SignalMotion.easeTween(200))
+                        },
+                        popExitTransition = {
+                            fadeOut(SignalMotion.easeTween(200)) +
+                            slideOutVertically(
+                                targetOffsetY = { 60 },
+                                animationSpec = SignalMotion.easeTween(200)
+                            )
+                        }
+                    ) { backStackEntry ->
+                        val rawUrl = backStackEntry.arguments?.getString("url") ?: return@composable
+                        val decodedUrl = try {
+                            java.net.URLDecoder.decode(rawUrl, "UTF-8")
+                        } catch (_: Exception) {
+                            rawUrl
+                        }
+                        val rawTitle = backStackEntry.arguments?.getString("title")
+                        val decodedTitle = rawTitle?.let {
+                            try {
+                                java.net.URLDecoder.decode(it, "UTF-8")
+                            } catch (_: Exception) {
+                                it
+                            }
+                        }
+                        BrowserScreen(
+                            url = decodedUrl,
+                            titleHint = decodedTitle,
+                            onBack = { navController.popBackStack() }
                         )
                     }
                 }

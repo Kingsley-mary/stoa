@@ -44,6 +44,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,7 +92,7 @@ fun HomeScreen(
     val sources by repository.getFollowedSourcesFlow().collectAsState(initial = emptyList())
     val allArticles by repository.getHomeStreamFlow().collectAsState(initial = emptyList())
 
-    var selectedSourceId by remember { mutableStateOf<Long?>(null) }
+    var selectedSourceId by rememberSaveable { mutableStateOf<Long?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     var toastMessage by remember { mutableStateOf<String?>(null) }
 

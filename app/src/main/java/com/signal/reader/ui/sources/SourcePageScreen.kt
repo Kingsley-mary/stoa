@@ -3,6 +3,10 @@ package com.signal.reader.ui.sources
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -63,12 +67,16 @@ import com.signal.reader.ui.theme.signalPressScale
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun SourcePageScreen(
     sourceId: Long,
     repository: FeedRepository,
     onArticleClick: (Long) -> Unit,
     onBack: () -> Unit,
+    onOpenWebsite: ((url: String, title: String?) -> Unit)? = null,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -113,10 +121,14 @@ fun SourcePageScreen(
 
     fun openWebsite(url: String) {
         if (url.isNotBlank()) {
-            try {
-                val intent = CustomTabsIntent.Builder().setShowTitle(true).build()
-                intent.launchUrl(context, Uri.parse(url))
-            } catch (_: Exception) {
+            if (onOpenWebsite != null) {
+                onOpenWebsite(url, source?.name)
+            } else {
+                try {
+                    val intent = CustomTabsIntent.Builder().setShowTitle(true).build()
+                    intent.launchUrl(context, Uri.parse(url))
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -439,7 +451,9 @@ fun SourcePageScreen(
                     HeroCard(
                         article = heroArticle,
                         onClick = { onArticleClick(heroArticle.id) },
-                        showSourceName = false
+                        showSourceName = false,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope
                     )
                 }
             }
@@ -454,7 +468,9 @@ fun SourcePageScreen(
                             coroutineScope.launch {
                                 repository.toggleSaved(article.id)
                             }
-                        }
+                        },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope
                     )
                 }
             }
