@@ -33,7 +33,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -64,10 +66,11 @@ import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     repository: FeedRepository,
@@ -134,14 +137,14 @@ fun HomeScreen(
 
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
-            while (isRefreshing) {
+            while (isActive && isRefreshing) {
                 // 0% -> 50%: expand from left (0.1 to 1.0)
                 scanlineLeftFraction.snapTo(0f)
                 scanlineWidthFraction.snapTo(0.1f)
                 scanlineWidthFraction.animateTo(1.0f, tween(350, easing = LinearEasing))
 
                 // 50% -> 100%: contract to right (width 1.0 to 0.1, left 0 to 0.9)
-                coroutineScope.launch {
+                launch {
                     scanlineLeftFraction.animateTo(0.9f, tween(350, easing = LinearEasing))
                 }
                 scanlineWidthFraction.animateTo(0.1f, tween(350, easing = LinearEasing))
@@ -242,31 +245,12 @@ fun HomeScreen(
 
                 val listState = rememberLazyListState()
 
-                Box(
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    onRefresh = { triggerRefresh() },
                     modifier = Modifier
                         .weight(1f)
-                        .draggable(
-                            orientation = Orientation.Vertical,
-                            state = rememberDraggableState { delta ->
-                                if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
-                                    pullDistance = (pullDistance + delta * 0.5f).coerceAtLeast(0f)
-                                    if (pullDistance >= ptrThresholdPx && !hasTickFired) {
-                                        haptics.tick()
-                                        hasTickFired = true
-                                    } else if (pullDistance < ptrThresholdPx) {
-                                        hasTickFired = false
-                                    }
-                                }
-                            },
-                            onDragStopped = {
-                                if (pullDistance >= ptrThresholdPx) {
-                                    triggerRefresh()
-                                } else {
-                                    pullDistance = 0f
-                                }
-                                hasTickFired = false
-                            }
-                        )
+                        .fillMaxWidth()
                 ) {
                     LazyColumn(
                         state = listState,

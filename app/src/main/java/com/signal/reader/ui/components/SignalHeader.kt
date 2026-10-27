@@ -97,6 +97,21 @@ fun SignalHeader(
                     DropdownMenuItem(
                         text = {
                             Text(
+                                "Refresh feeds",
+                                color = colors.ink,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onLogoClick()
+                        }
+                    )
+                    HorizontalDivider(color = colors.line)
+                    DropdownMenuItem(
+                        text = {
+                            Text(
                                 "Mark all as read",
                                 color = colors.ink,
                                 fontSize = 15.sp,

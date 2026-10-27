@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.signal.reader.data.local.entity.SourceEntity
 import com.signal.reader.data.repository.FeedRepository
+import com.signal.reader.ui.components.SourceLogo
 import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.TimeUtils
 import com.signal.reader.ui.components.getSourceInitials
@@ -208,22 +209,15 @@ private fun SourceRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 48x48 Monogram Initial (.mono: 14dp radius, weight 800, 15sp)
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(colors.ink)
-                    .alpha(if (source.muted) 0.5f else 1.0f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = initials,
-                    color = colors.bg,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 15.sp
-                )
-            }
+            // 48x48 Publication Logo / Monogram (.mono: 14dp radius)
+            SourceLogo(
+                siteUrl = source.siteUrl,
+                sourceName = source.name,
+                size = 48.dp,
+                shape = RoundedCornerShape(14.dp),
+                fontSize = 15.sp,
+                modifier = Modifier.alpha(if (source.muted) 0.5f else 1.0f)
+            )
 
             // Name and Subtitle (.info)
             Column(

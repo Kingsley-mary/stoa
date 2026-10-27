@@ -25,13 +25,13 @@ fun StaggeredItem(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    if (SignalTheme.reducedMotion) {
+    if (SignalTheme.reducedMotion || index > 6) {
         Box(modifier = modifier) { content() }
         return
     }
 
     val density = LocalDensity.current
-    val cappedIndex = index.coerceIn(0, 10)
+    val cappedIndex = index.coerceIn(0, 6)
     val delayMs = cappedIndex * SignalMotion.ContentEnterStagger
 
     val alpha = remember { Animatable(0f) }

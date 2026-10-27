@@ -62,6 +62,7 @@ import com.signal.reader.data.feed.StarterSource
 import com.signal.reader.data.feed.StarterSources
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.ui.components.BackChevron
+import com.signal.reader.ui.components.SourceLogo
 import com.signal.reader.ui.components.getSourceInitials
 import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
@@ -90,9 +91,26 @@ fun AddSourcesScreen(
     var pastedUrl by remember { mutableStateOf("") }
     var isSearchingFeed by remember { mutableStateOf(false) }
     var discoveryResult by remember { mutableStateOf<DiscoveryResult?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
 
     val selectedStarter = remember { mutableStateListOf<StarterSource>() }
     val customAdded = remember { mutableStateListOf<DiscoveryResult.Found>() }
+
+    val filteredGroups = remember(searchQuery) {
+        val q = searchQuery.trim().lowercase()
+        if (q.isBlank()) {
+            StarterSources.ALL.groupBy { it.group }
+        } else {
+            StarterSources.ALL
+                .filter {
+                    it.name.lowercase().contains(q) ||
+                    it.group.lowercase().contains(q) ||
+                    it.description.lowercase().contains(q)
+                }
+                .groupBy { it.group }
+        }
+    }
 
     fun findFeed() {
         if (pastedUrl.isBlank()) return
@@ -104,14 +122,20 @@ fun AddSourcesScreen(
     }
 
     fun finishAndSave() {
+        if (isSaving) return
+        isSaving = true
         coroutineScope.launch {
             haptics.pop()
-            for (source in selectedStarter) {
-                repository.addSource(source.name, source.siteUrl, source.feedUrl, source.description)
+            val customAsStarter = customAdded.map {
+                StarterSource(
+                    group = "Custom",
+                    name = it.name,
+                    description = it.description,
+                    siteUrl = it.siteUrl,
+                    feedUrl = it.feedUrl
+                )
             }
-            for (custom in customAdded) {
-                repository.addSource(custom.name, custom.siteUrl, custom.feedUrl, custom.description)
-            }
+            repository.addSourcesBatch(selectedStarter + customAsStarter)
             onFinish()
         }
     }
@@ -196,9 +220,67 @@ fun AddSourcesScreen(
                 }
             }
 
-            // Paste URL Box
+            // Search Sources Input Box
             item {
                 StaggeredItem(index = 1) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 6.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(colors.card)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "⌕",
+                                color = colors.mute,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                modifier = Modifier.weight(1f),
+                                textStyle = TextStyle(
+                                    fontFamily = SignalTheme.typography.wordmark.fontFamily,
+                                    color = colors.ink,
+                                    fontSize = 15.sp
+                                ),
+                                singleLine = true,
+                                cursorBrush = SolidColor(colors.ink),
+                                decorationBox = { innerTextField ->
+                                    if (searchQuery.isEmpty()) {
+                                        Text(
+                                            text = "Search 24+ curated sources...",
+                                            color = colors.mute,
+                                            fontSize = 15.sp
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            )
+                            if (searchQuery.isNotEmpty()) {
+                                Text(
+                                    text = "✕",
+                                    color = colors.mute,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier
+                                        .clickable { searchQuery = "" }
+                                        .padding(4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Paste URL Box
+            item {
+                StaggeredItem(index = 2) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -281,20 +363,14 @@ fun AddSourcesScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(colors.ink),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = getSourceInitials(result.name),
-                                            color = colors.bg,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 15.sp
-                                        )
-                                    }
+                                    // 48x48 Publication Logo / Monogram (.mono: 14dp radius)
+                                    SourceLogo(
+                                        siteUrl = result.siteUrl,
+                                        sourceName = result.name,
+                                        size = 48.dp,
+                                        shape = RoundedCornerShape(14.dp),
+                                        fontSize = 15.sp
+                                    )
 
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
@@ -359,6 +435,7 @@ fun AddSourcesScreen(
                     StaggeredItem(index = idx + 2) {
                         StarterRow(
                             name = custom.name,
+                            siteUrl = custom.siteUrl,
                             description = custom.description.ifBlank { "Added from a link" },
                             isFollowing = false,
                             isAdded = true,
@@ -371,37 +448,54 @@ fun AddSourcesScreen(
                 }
             }
 
-            // Dynamic Starter Sources by Group
-            val groupedSources = StarterSources.ALL.groupBy { it.group }
+            // Dynamic Starter Sources by Group (filtered by search)
             var staggeredItemIndex = 3
-            groupedSources.forEach { (groupName, sourcesInGroup) ->
-                item(key = "header_$groupName") {
-                    Text(
-                        text = groupName,
-                        color = colors.mute,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(start = 20.dp, top = 28.dp, bottom = 10.dp)
-                    )
-                }
-                itemsIndexed(sourcesInGroup, key = { _, s -> s.feedUrl }) { idx, source ->
-                    val isFollowing = followedUrls.contains(source.feedUrl.lowercase())
-                    val isAdded = selectedStarter.contains(source)
-                    StaggeredItem(index = (staggeredItemIndex + idx).coerceAtMost(10)) {
-                        StarterRow(
-                            name = source.name,
-                            description = source.description,
-                            isFollowing = isFollowing,
-                            isAdded = isAdded,
-                            onToggle = {
-                                haptics.tick()
-                                if (isAdded) selectedStarter.remove(source)
-                                else selectedStarter.add(source)
-                            }
+            if (filteredGroups.isEmpty() && searchQuery.isNotBlank()) {
+                item(key = "empty_search") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No sources found matching \"$searchQuery\"",
+                            color = colors.mute,
+                            fontSize = 14.sp
                         )
                     }
                 }
-                staggeredItemIndex += sourcesInGroup.size
+            } else {
+                filteredGroups.forEach { (groupName, sourcesInGroup) ->
+                    item(key = "header_$groupName") {
+                        Text(
+                            text = groupName,
+                            color = colors.mute,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 20.dp, top = 28.dp, bottom = 10.dp)
+                        )
+                    }
+                    itemsIndexed(sourcesInGroup, key = { _, s -> s.feedUrl }) { idx, source ->
+                        val isFollowing = followedUrls.contains(source.feedUrl.lowercase())
+                        val isAdded = selectedStarter.contains(source)
+                        StaggeredItem(index = (staggeredItemIndex + idx).coerceAtMost(10)) {
+                            StarterRow(
+                                name = source.name,
+                                siteUrl = source.siteUrl,
+                                description = source.description,
+                                isFollowing = isFollowing,
+                                isAdded = isAdded,
+                                onToggle = {
+                                    haptics.tick()
+                                    if (isAdded) selectedStarter.remove(source)
+                                    else selectedStarter.add(source)
+                                }
+                            )
+                        }
+                    }
+                    staggeredItemIndex += sourcesInGroup.size
+                }
             }
 
             item {
@@ -417,8 +511,9 @@ fun AddSourcesScreen(
                 .navigationBarsPadding()
                 .padding(20.dp)
         ) {
-            val isButtonEnabled = if (isFirstLaunch) totalSelected > 0 else true
+            val isButtonEnabled = !isSaving && (if (isFirstLaunch) totalSelected > 0 else true)
             val buttonText = when {
+                isSaving -> "Adding..."
                 isFirstLaunch && totalSelected == 0 -> "Pick at least one"
                 isFirstLaunch -> "Continue with $totalSelected"
                 totalSelected == 0 -> "Done"
@@ -535,6 +630,7 @@ fun AddTogglePill(
 @Composable
 private fun StarterRow(
     name: String,
+    siteUrl: String = "",
     description: String,
     isFollowing: Boolean,
     isAdded: Boolean,
@@ -552,21 +648,14 @@ private fun StarterRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 48x48 Initials Square (.mono)
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(colors.ink),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = getSourceInitials(name),
-                    color = colors.bg,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 15.sp
-                )
-            }
+            // 48x48 Publication Logo / Monogram (.mono: 14dp radius)
+            SourceLogo(
+                siteUrl = siteUrl,
+                sourceName = name,
+                size = 48.dp,
+                shape = RoundedCornerShape(14.dp),
+                fontSize = 15.sp
+            )
 
             // Info
             Column(

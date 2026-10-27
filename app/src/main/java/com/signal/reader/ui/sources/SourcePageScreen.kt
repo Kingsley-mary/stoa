@@ -52,6 +52,7 @@ import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.ui.components.ArticleRow
 import com.signal.reader.ui.components.BackChevron
 import com.signal.reader.ui.components.HeroCard
+import com.signal.reader.ui.components.SourceLogo
 import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.TimeUtils
 import com.signal.reader.ui.components.getSourceInitials
@@ -81,8 +82,6 @@ fun SourcePageScreen(
 
     var showUnfollowConfirm by remember { mutableStateOf(false) }
     var statusNote by remember { mutableStateOf<String?>(null) }
-
-    val currentSource = source ?: return
 
     val heroArticle = remember(articles) {
         articles.firstOrNull { !it.imageUrl.isNullOrBlank() } ?: articles.firstOrNull()
@@ -151,33 +150,41 @@ fun SourcePageScreen(
 
         HorizontalDivider(color = colors.line, thickness = 1.dp)
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            // Masthead Section (.mast)
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 24.dp)
-                ) {
-                    // 56x56 Initials Square (.mono)
-                    Box(
+        val currentSource = source
+        if (currentSource == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(40.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Loading source...",
+                    color = colors.mute,
+                    fontSize = 14.sp
+                )
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                // Masthead Section (.mast)
+                item {
+                    Column(
                         modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(colors.ink),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 24.dp)
                     ) {
-                        Text(
-                            text = getSourceInitials(currentSource.name),
-                            color = colors.bg,
-                            fontWeight = FontWeight.ExtraBold,
+                        // 56x56 Publication Logo / Monogram (.mono: 16dp radius)
+                        SourceLogo(
+                            siteUrl = currentSource.siteUrl,
+                            sourceName = currentSource.name,
+                            size = 56.dp,
+                            shape = RoundedCornerShape(16.dp),
                             fontSize = 18.sp
                         )
-                    }
 
-                    // Source Name H1
-                    Text(
-                        text = currentSource.name.uppercase(),
+                        // Source Name H1
+                        Text(
+                            text = currentSource.name.uppercase(),
                         style = SignalTheme.typography.screenTitle,
                         color = colors.ink,
                         modifier = Modifier.padding(top = 20.dp, bottom = 14.dp)
@@ -463,6 +470,7 @@ fun SourcePageScreen(
                 )
                 Spacer(modifier = Modifier.height(36.dp))
             }
+        }
         }
     }
 }

@@ -1,12 +1,17 @@
 package com.signal.reader
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
+import coil.util.DebugLogger
 import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.local.SignalDatabase
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.data.sync.RefreshWorker
 
-class SignalApplication : Application() {
+class SignalApplication : Application(), ImageLoaderFactory {
 
     lateinit var database: SignalDatabase
         private set
@@ -32,6 +37,24 @@ class SignalApplication : Application() {
             wifiOnly = settings.wifiOnly,
             enabled = settings.backgroundRefresh
         )
+    }
+
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.25)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(120L * 1024 * 1024) // 120 MB
+                    .build()
+            }
+            .crossfade(true)
+            .respectCacheHeaders(false) // Cache images aggressively for offline reading
+            .build()
     }
 
     companion object {

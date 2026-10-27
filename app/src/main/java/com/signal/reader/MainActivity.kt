@@ -40,6 +40,7 @@ import com.signal.reader.ui.settings.SettingsScreen
 import com.signal.reader.ui.sources.AddSourcesScreen
 import com.signal.reader.ui.sources.SourcePageScreen
 import com.signal.reader.ui.sources.SourcesScreen
+import com.signal.reader.ui.splash.SplashScreen
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
 
@@ -90,7 +91,7 @@ fun SignalAppNav(
     }
 
     val colors = SignalTheme.colors
-    val startDestination = if (isFirstLaunch) "first_launch" else "home"
+    val startDestination = "splash"
 
     Scaffold(
         containerColor = colors.bg,
@@ -164,6 +165,18 @@ fun SignalAppNav(
                         )
                     }
                 ) {
+                    // Editorial Starter Splash Screen
+                    composable("splash") {
+                        SplashScreen(
+                            onFinished = {
+                                val destination = if (isFirstLaunch) "first_launch" else "home"
+                                navController.navigate(destination) {
+                                    popUpTo("splash") { inclusive = true }
+                                }
+                            }
+                        )
+                    }
+
                     // First Launch Add Sources Screen
                     composable("first_launch") {
                         AddSourcesScreen(

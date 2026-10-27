@@ -3,16 +3,20 @@ package com.signal.reader.data.repository
 import com.signal.reader.data.feed.FeedDiscovery
 import com.signal.reader.data.feed.FeedFetcher
 import com.signal.reader.data.feed.ParsedArticle
+import com.signal.reader.data.feed.StarterSource
 import com.signal.reader.data.feed.StarterSources
 import com.signal.reader.data.local.SignalDatabase
 import com.signal.reader.data.local.dao.SourceWithUnreadCount
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.local.entity.SourceEntity
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
@@ -21,6 +25,8 @@ class FeedRepository(
     private val fetcher: FeedFetcher = FeedFetcher(),
     val discovery: FeedDiscovery = FeedDiscovery(fetcher)
 ) {
+    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val sourceDao = database.sourceDao()
     private val articleDao = database.articleDao()
 
@@ -56,22 +62,62 @@ class FeedRepository(
             if (!existing.followed) {
                 sourceDao.setFollowed(existing.id, true)
             }
-            // Fetch newest items immediately
-            refreshSource(existing.id)
+            // Fetch newest items asynchronously in the background
+            repoScope.launch { refreshSource(existing.id) }
             return@withContext existing.id
         }
 
+        val maxOrder = sourceDao.getAllSources().maxOfOrNull { it.displayOrder } ?: 0
         val entity = SourceEntity(
             name = name,
             siteUrl = siteUrl,
             feedUrl = feedUrl,
             description = description,
             followed = true,
-            displayOrder = (sourceDao.getAllSources().maxOfOrNull { it.displayOrder } ?: 0) + 1
+            displayOrder = maxOrder + 1
         )
         val newId = sourceDao.insert(entity)
-        refreshSource(newId)
+        repoScope.launch { refreshSource(newId) }
         newId
+    }
+
+    suspend fun addSourcesBatch(
+        sources: List<StarterSource>
+    ): List<Long> = withContext(Dispatchers.IO) {
+        if (sources.isEmpty()) return@withContext emptyList()
+        var currentOrder = sourceDao.getAllSources().maxOfOrNull { it.displayOrder } ?: 0
+        val idsToRefresh = mutableListOf<Long>()
+
+        for (item in sources) {
+            val existing = sourceDao.getSourceByFeedUrl(item.feedUrl)
+            if (existing != null) {
+                if (!existing.followed) {
+                    sourceDao.setFollowed(existing.id, true)
+                }
+                idsToRefresh.add(existing.id)
+            } else {
+                currentOrder++
+                val entity = SourceEntity(
+                    name = item.name,
+                    siteUrl = item.siteUrl,
+                    feedUrl = item.feedUrl,
+                    description = item.description,
+                    followed = true,
+                    displayOrder = currentOrder
+                )
+                val newId = sourceDao.insert(entity)
+                idsToRefresh.add(newId)
+            }
+        }
+
+        // Fetch in background concurrently
+        repoScope.launch {
+            idsToRefresh.forEach { id ->
+                launch { refreshSource(id) }
+            }
+        }
+
+        idsToRefresh
     }
 
     suspend fun unfollowSource(sourceId: Long) = withContext(Dispatchers.IO) {

@@ -119,18 +119,11 @@ fun ReaderScreen(
         }
     }
 
-    // Header visibility on scroll (hides on scroll down after 90px, returns on scroll up)
-    var isHeaderVisible by remember { mutableStateOf(true) }
-    var previousScrollOffset by remember { mutableIntStateOf(0) }
-
-    LaunchedEffect(listState.firstVisibleItemScrollOffset, listState.firstVisibleItemIndex) {
-        val currentOffset = listState.firstVisibleItemIndex * 1000 + listState.firstVisibleItemScrollOffset
-        if (currentOffset > previousScrollOffset + 30 && currentOffset > 200) {
-            isHeaderVisible = false
-        } else if (currentOffset < previousScrollOffset - 10) {
-            isHeaderVisible = true
+    // Header visibility on scroll with derivedStateOf to prevent scroll lag
+    val isHeaderVisible by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0 || listState.firstVisibleItemScrollOffset < 120
         }
-        previousScrollOffset = currentOffset
     }
 
     // Font size steps: 16, 18, 20, 23
