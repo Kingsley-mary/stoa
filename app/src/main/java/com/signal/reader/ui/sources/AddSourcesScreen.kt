@@ -371,62 +371,37 @@ fun AddSourcesScreen(
                 }
             }
 
-            // Design Group
-            item {
-                Text(
-                    text = "Design",
-                    color = colors.mute,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(start = 20.dp, top = 28.dp, bottom = 10.dp)
-                )
-            }
-            val designSources = StarterSources.ALL.filter { it.group == "Design" }
-            itemsIndexed(designSources) { idx, source ->
-                val isFollowing = followedUrls.contains(source.feedUrl.lowercase())
-                val isAdded = selectedStarter.contains(source)
-                StaggeredItem(index = idx + 3) {
-                    StarterRow(
-                        name = source.name,
-                        description = source.description,
-                        isFollowing = isFollowing,
-                        isAdded = isAdded,
-                        onToggle = {
-                            haptics.tick()
-                            if (isAdded) selectedStarter.remove(source)
-                            else selectedStarter.add(source)
-                        }
+            // Dynamic Starter Sources by Group
+            val groupedSources = StarterSources.ALL.groupBy { it.group }
+            var staggeredItemIndex = 3
+            groupedSources.forEach { (groupName, sourcesInGroup) ->
+                item(key = "header_$groupName") {
+                    Text(
+                        text = groupName,
+                        color = colors.mute,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(start = 20.dp, top = 28.dp, bottom = 10.dp)
                     )
                 }
-            }
-
-            // Tech and culture Group
-            item {
-                Text(
-                    text = "Tech and culture",
-                    color = colors.mute,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(start = 20.dp, top = 28.dp, bottom = 10.dp)
-                )
-            }
-            val techSources = StarterSources.ALL.filter { it.group == "Tech and culture" }
-            itemsIndexed(techSources) { idx, source ->
-                val isFollowing = followedUrls.contains(source.feedUrl.lowercase())
-                val isAdded = selectedStarter.contains(source)
-                StaggeredItem(index = idx + 9) {
-                    StarterRow(
-                        name = source.name,
-                        description = source.description,
-                        isFollowing = isFollowing,
-                        isAdded = isAdded,
-                        onToggle = {
-                            haptics.tick()
-                            if (isAdded) selectedStarter.remove(source)
-                            else selectedStarter.add(source)
-                        }
-                    )
+                itemsIndexed(sourcesInGroup, key = { _, s -> s.feedUrl }) { idx, source ->
+                    val isFollowing = followedUrls.contains(source.feedUrl.lowercase())
+                    val isAdded = selectedStarter.contains(source)
+                    StaggeredItem(index = (staggeredItemIndex + idx).coerceAtMost(10)) {
+                        StarterRow(
+                            name = source.name,
+                            description = source.description,
+                            isFollowing = isFollowing,
+                            isAdded = isAdded,
+                            onToggle = {
+                                haptics.tick()
+                                if (isAdded) selectedStarter.remove(source)
+                                else selectedStarter.add(source)
+                            }
+                        )
+                    }
                 }
+                staggeredItemIndex += sourcesInGroup.size
             }
 
             item {
