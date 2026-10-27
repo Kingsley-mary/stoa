@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -55,12 +57,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.repository.FeedRepository
@@ -541,6 +545,213 @@ private fun FactRow(
     HorizontalDivider(color = colors.line, thickness = 1.dp)
 }
 
+private sealed class ContentBlock {
+    data class Paragraph(val text: String) : ContentBlock()
+    data class Heading(val text: String, val level: Int) : ContentBlock()
+    data class Image(val url: String, val caption: String? = null) : ContentBlock()
+    data class Quote(val text: String) : ContentBlock()
+    data class BulletList(val items: List<String>) : ContentBlock()
+}
+
+private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List<ContentBlock> {
+    val doc = Jsoup.parse(html)
+    val blocks = mutableListOf<ContentBlock>()
+    val seenImages = mutableSetOf<String>()
+    heroImageUrl?.let { seenImages.add(it.trim()) }
+
+    val elements = doc.body().select("p, h1, h2, h3, h4, figure, img, blockquote, ul, ol")
+    val processedElements = mutableSetOf<org.jsoup.nodes.Element>()
+
+    for (el in elements) {
+        if (el in processedElements) continue
+
+        when (el.tagName().lowercase()) {
+            "h1", "h2", "h3", "h4" -> {
+                val text = el.text().trim()
+                if (text.isNotBlank()) {
+                    val level = el.tagName().removePrefix("h").toIntOrNull() ?: 2
+                    blocks.add(ContentBlock.Heading(text, level))
+                    processedElements.add(el)
+                }
+            }
+            "figure" -> {
+                val img = el.selectFirst("img")
+                val src = img?.attr("src")?.ifBlank { img.attr("data-src") }?.trim()
+                val caption = el.selectFirst("figcaption")?.text()?.trim()
+                if (!src.isNullOrBlank() && !src.startsWith("data:") && seenImages.add(src)) {
+                    blocks.add(ContentBlock.Image(src, caption?.ifBlank { img.attr("alt").trim() }?.ifBlank { null }))
+                }
+                processedElements.addAll(el.getAllElements())
+            }
+            "p" -> {
+                val img = el.selectFirst("img")
+                val text = el.text().trim()
+                if (img != null && text.length < 5) {
+                    val src = img.attr("src").ifBlank { img.attr("data-src") }.trim()
+                    val alt = img.attr("alt").trim().ifBlank { img.attr("title").trim() }
+                    if (src.isNotBlank() && !src.startsWith("data:") && seenImages.add(src)) {
+                        blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
+                    }
+                } else {
+                    if (text.isNotBlank()) {
+                        blocks.add(ContentBlock.Paragraph(text))
+                    }
+                    if (img != null) {
+                        val src = img.attr("src").ifBlank { img.attr("data-src") }.trim()
+                        val alt = img.attr("alt").trim()
+                        if (src.isNotBlank() && !src.startsWith("data:") && seenImages.add(src)) {
+                            blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
+                        }
+                    }
+                }
+                processedElements.add(el)
+            }
+            "img" -> {
+                if (el.parent()?.tagName()?.lowercase() !in listOf("figure", "p")) {
+                    val src = el.attr("src").ifBlank { el.attr("data-src") }.trim()
+                    val alt = el.attr("alt").trim()
+                    if (src.isNotBlank() && !src.startsWith("data:") && seenImages.add(src)) {
+                        blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
+                    }
+                    processedElements.add(el)
+                }
+            }
+            "blockquote" -> {
+                val text = el.text().trim()
+                if (text.isNotBlank()) {
+                    blocks.add(ContentBlock.Quote(text))
+                    processedElements.addAll(el.getAllElements())
+                }
+            }
+            "ul", "ol" -> {
+                val listItems = el.select("li").map { it.text().trim() }.filter { it.isNotBlank() }
+                if (listItems.isNotEmpty()) {
+                    blocks.add(ContentBlock.BulletList(listItems))
+                    processedElements.addAll(el.getAllElements())
+                }
+            }
+        }
+    }
+
+    if (blocks.isEmpty()) {
+        val rawText = doc.text().trim()
+        if (rawText.isNotBlank()) {
+            val fallbackParagraphs = rawText.split("\n\n").map { it.trim() }.filter { it.isNotBlank() }
+            fallbackParagraphs.forEach { blocks.add(ContentBlock.Paragraph(it)) }
+        }
+    }
+
+    return blocks
+}
+
+@Composable
+private fun RenderContentBlock(
+    block: ContentBlock,
+    fontSize: androidx.compose.ui.unit.TextUnit
+) {
+    val colors = SignalTheme.colors
+
+    when (block) {
+        is ContentBlock.Paragraph -> {
+            Text(
+                text = block.text,
+                style = SignalTheme.typography.readerBody(fontSize),
+                color = colors.ink,
+                modifier = Modifier.padding(bottom = 18.dp)
+            )
+        }
+        is ContentBlock.Image -> {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(colors.card)
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(block.url)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = block.caption ?: "Inline article image",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight(),
+                        contentScale = ContentScale.FillWidth
+                    )
+                }
+                if (!block.caption.isNullOrBlank()) {
+                    Text(
+                        text = block.caption,
+                        color = colors.mute,
+                        fontSize = 13.sp,
+                        fontStyle = FontStyle.Italic,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp)
+                    )
+                }
+            }
+        }
+        is ContentBlock.Heading -> {
+            Text(
+                text = block.text,
+                style = SignalTheme.typography.screenTitle,
+                fontSize = if (block.level <= 2) 20.sp else 18.sp,
+                color = colors.ink,
+                modifier = Modifier.padding(top = 22.dp, bottom = 10.dp)
+            )
+        }
+        is ContentBlock.Quote -> {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height(32.dp)
+                        .background(colors.ink)
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(
+                    text = block.text,
+                    style = SignalTheme.typography.readerBody(fontSize),
+                    fontStyle = FontStyle.Italic,
+                    color = colors.ink,
+                    lineHeight = 24.sp
+                )
+            }
+        }
+        is ContentBlock.BulletList -> {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                block.items.forEach { item ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("—", color = colors.mute, fontSize = fontSize)
+                        Text(
+                            text = item,
+                            style = SignalTheme.typography.readerBody(fontSize),
+                            color = colors.ink
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ArticleBody(
     article: ArticleEntity,
@@ -549,24 +760,17 @@ private fun ArticleBody(
 ) {
     val colors = SignalTheme.colors
 
-    val paragraphs = remember(article.fullContent, article.excerpt) {
+    val blocks = remember(article.fullContent, article.excerpt, article.imageUrl) {
         val raw = article.fullContent ?: article.excerpt
-        val doc = Jsoup.parse(raw)
-        val pTags = doc.select("p").map { it.text().trim() }.filter { it.isNotBlank() }
-        if (pTags.isNotEmpty()) pTags else raw.split("\n\n").map { it.trim() }.filter { it.isNotBlank() }
+        parseContentBlocks(raw, heroImageUrl = article.imageUrl)
     }
 
     if (article.isExcerptOnly) {
-        val excerptParagraphs = paragraphs.take(2)
+        val excerptBlocks = blocks.take(3)
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                excerptParagraphs.forEach { text ->
-                    Text(
-                        text = text,
-                        style = SignalTheme.typography.readerBody(fontSize),
-                        color = colors.ink,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
+                excerptBlocks.forEach { block ->
+                    RenderContentBlock(block = block, fontSize = fontSize)
                 }
             }
 
@@ -625,15 +829,10 @@ private fun ArticleBody(
             )
         }
     } else {
-        // Full-text state: show all paragraphs
+        // Full-text state: render all sequential blocks (paragraphs, inline images, headings, quotes)
         Column(modifier = Modifier.fillMaxWidth()) {
-            paragraphs.forEach { text ->
-                Text(
-                    text = text,
-                    style = SignalTheme.typography.readerBody(fontSize),
-                    color = colors.ink,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
+            blocks.forEach { block ->
+                RenderContentBlock(block = block, fontSize = fontSize)
             }
         }
     }
