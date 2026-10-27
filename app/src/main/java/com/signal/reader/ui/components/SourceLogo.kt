@@ -2,6 +2,7 @@ package com.signal.reader.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -66,7 +67,7 @@ fun SourceLogo(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(if (isLoaded && !hasError) Color.White else colors.ink),
+            .background(colors.ink),
         contentAlignment = Alignment.Center
     ) {
         // High-contrast monogram fallback (visible while loading or if network fails)
@@ -87,9 +88,9 @@ fun SourceLogo(
                     .build(),
                 contentDescription = "$sourceName logo",
                 modifier = Modifier
-                    .size(size * 0.72f)
-                    .clip(RoundedCornerShape(size * 0.18f)),
-                contentScale = ContentScale.Fit,
+                    .fillMaxSize()
+                    .clip(shape),
+                contentScale = ContentScale.Crop,
                 onSuccess = { isLoaded = true },
                 onError = { hasError = true }
             )

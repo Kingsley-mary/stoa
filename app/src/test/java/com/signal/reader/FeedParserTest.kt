@@ -117,4 +117,38 @@ class FeedParserTest {
         val words = (1..600).joinToString(" ") { "word$it" }
         assertEquals(3, TimeUtils.calculateReadTimeMinutes(words))
     }
+
+    @Test
+    fun testLeadingWhitespaceAndBOMXmlParsing() {
+        // Aperture feed has leading newline and whitespace before <?xml
+        val apertureSample = "\n\n   <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rss version=\"2.0\"><channel><title>Aperture</title><link>https://aperture.org</link><item><title>Photo Essay</title><link>https://aperture.org/story</link></item></channel></rss>"
+        val parsed = FeedParser.parse(apertureSample, "https://aperture.org/feed/")
+        assertEquals("Aperture", parsed.title)
+        assertEquals(1, parsed.items.size)
+        assertEquals("Photo Essay", parsed.items[0].title)
+    }
+
+    @Test
+    fun testUnescapedAmpersandsInAttributesXmlParsing() {
+        // Rest of World feed has unescaped ampersands in media:content url attributes
+        val rowSample = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+              <channel>
+                <title>Rest of World</title>
+                <link>https://restofworld.org</link>
+                <item>
+                  <title>AI and Energy</title>
+                  <link>https://restofworld.org/ai?ref=rss&tag=tech</link>
+                  <media:content url="https://img.restofworld.org/photo.jpg?width=380&dpr=2&crop=16:9" medium="image"/>
+                </item>
+              </channel>
+            </rss>
+        """.trimIndent()
+        val parsed = FeedParser.parse(rowSample, "https://restofworld.org/feed/latest")
+        assertEquals("Rest of World", parsed.title)
+        assertEquals(1, parsed.items.size)
+        assertEquals("AI and Energy", parsed.items[0].title)
+        assertTrue(parsed.items[0].imageUrl!!.contains("width=380"))
+    }
 }

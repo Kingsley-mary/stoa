@@ -24,10 +24,11 @@ object FeedParser {
     )
 
     fun parse(xmlContent: String, feedUrl: String): ParsedFeed {
+        val sanitized = sanitizeXml(xmlContent)
         val factory = XmlPullParserFactory.newInstance()
         factory.isNamespaceAware = true
         val parser = factory.newPullParser()
-        parser.setInput(StringReader(xmlContent))
+        parser.setInput(StringReader(sanitized))
 
         var eventType = parser.eventType
         var rootTag = ""
@@ -45,6 +46,34 @@ object FeedParser {
             "feed" -> parseAtom(parser, feedUrl)
             else -> throw IllegalArgumentException("Unknown feed format with root tag <$rootTag>")
         }
+    }
+
+    private fun sanitizeXml(raw: String): String {
+        // 1. Trim leading/trailing whitespace & Unicode BOMs (\uFEFF, \uFFFE)
+        var clean = raw.trim().removePrefix("\uFEFF").removePrefix("\uFFFE").trim()
+
+        // 2. Strip any extraneous prologue text before <?xml or root tag (<rss or <feed)
+        val xmlDeclIndex = clean.indexOf("<?xml")
+        if (xmlDeclIndex > 0) {
+            clean = clean.substring(xmlDeclIndex)
+        } else if (xmlDeclIndex == -1) {
+            val rssIndex = clean.indexOf("<rss")
+            val feedIndex = clean.indexOf("<feed")
+            val startIndex = when {
+                rssIndex != -1 && feedIndex != -1 -> minOf(rssIndex, feedIndex)
+                rssIndex != -1 -> rssIndex
+                feedIndex != -1 -> feedIndex
+                else -> 0
+            }
+            if (startIndex > 0) {
+                clean = clean.substring(startIndex)
+            }
+        }
+
+        // 3. Fix unescaped ampersands in URLs or attributes (& not followed by valid XML entities)
+        clean = clean.replace(Regex("&(?!(amp|lt|gt|quot|apos|#\\d+|#x[0-9a-fA-F]+);)"), "&amp;")
+
+        return clean
     }
 
     private fun parseRss(parser: XmlPullParser, feedUrl: String): ParsedFeed {
