@@ -1,6 +1,9 @@
 package com.signal.reader.ui.home
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -64,6 +67,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun HomeScreen(
     repository: FeedRepository,
@@ -72,6 +76,8 @@ fun HomeScreen(
     onSettingsClick: () -> Unit,
     onAddSourcesClick: () -> Unit,
     isCompactLayout: Boolean = false,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = SignalTheme.colors
@@ -276,7 +282,9 @@ fun HomeScreen(
                                     article = heroArticle,
                                     onClick = { onArticleClick(heroArticle.id) },
                                     animateWords = !hasAnimatedFirstLoad,
-                                    slideIn = shouldSlideHero
+                                    slideIn = shouldSlideHero,
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope
                                 )
                                 hasAnimatedFirstLoad = true
                             }
@@ -292,7 +300,9 @@ fun HomeScreen(
                                         coroutineScope.launch {
                                             repository.toggleSaved(article.id)
                                         }
-                                    }
+                                    },
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope
                                 )
                             }
                         }

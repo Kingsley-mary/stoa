@@ -1,5 +1,8 @@
 package com.signal.reader.ui.theme
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.Spring
@@ -8,10 +11,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.animation.core.animateFloatAsState
@@ -103,4 +108,32 @@ fun Modifier.signalPressScale(
                 )
             } else Modifier
         )
+}
+
+/**
+ * Shared element image transition matching mockup:
+ * shared element (card to Reader) .5s ease-out, crop animates from 4:5 to 1:1
+ */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+fun Modifier.signalSharedImage(
+    key: String,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    shape: Shape
+): Modifier {
+    if (sharedTransitionScope == null || animatedVisibilityScope == null) return this
+    with(sharedTransitionScope) {
+        return this@signalSharedImage.sharedElement(
+            state = rememberSharedContentState(key = key),
+            animatedVisibilityScope = animatedVisibilityScope,
+            boundsTransform = { _, _ ->
+                tween(
+                    durationMillis = SignalMotion.SharedElementDuration,
+                    easing = SignalMotion.EaseOutQuart
+                )
+            },
+            clipInOverlayDuringTransition = OverlayClip(shape)
+        )
+    }
 }

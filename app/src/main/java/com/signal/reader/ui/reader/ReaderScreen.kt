@@ -3,6 +3,9 @@ package com.signal.reader.ui.reader
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -69,10 +72,12 @@ import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
+import com.signal.reader.ui.theme.signalSharedImage
 import kotlinx.coroutines.launch
 import org.jsoup.Jsoup
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun ReaderScreen(
     articleId: Long,
@@ -80,6 +85,8 @@ fun ReaderScreen(
     settingsManager: SettingsManager,
     onBack: () -> Unit,
     onOpenSourcePage: (Long) -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -199,6 +206,12 @@ fun ReaderScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
+                            .signalSharedImage(
+                                key = "article_image_${currentArticle.id}",
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                                shape = RoundedCornerShape(26.dp)
+                            )
                             .clip(RoundedCornerShape(26.dp))
                             .background(colors.card)
                     ) {

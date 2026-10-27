@@ -1,6 +1,9 @@
 package com.signal.reader.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.shrinkHorizontally
@@ -43,8 +46,10 @@ import coil.compose.AsyncImage
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
+import com.signal.reader.ui.theme.signalSharedImage
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun HeroCard(
     article: ArticleEntity,
@@ -52,6 +57,8 @@ fun HeroCard(
     showSourceName: Boolean = true,
     animateWords: Boolean = false,
     slideIn: Boolean = false,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = SignalTheme.colors
@@ -112,6 +119,12 @@ fun HeroCard(
                     .fillMaxWidth()
                     .aspectRatio(4f / 5f)
                     .scale(cardScale)
+                    .signalSharedImage(
+                        key = "article_image_${article.id}",
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        shape = RoundedCornerShape(26.dp)
+                    )
                     .clip(RoundedCornerShape(26.dp))
                     .background(colors.card)
             ) {

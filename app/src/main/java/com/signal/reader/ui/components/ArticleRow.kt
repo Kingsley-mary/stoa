@@ -1,6 +1,9 @@
 package com.signal.reader.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -47,14 +50,18 @@ import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
+import com.signal.reader.ui.theme.signalSharedImage
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun ArticleRow(
     article: ArticleEntity,
     onClick: () -> Unit,
     onToggleSave: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = SignalTheme.colors
@@ -238,6 +245,12 @@ fun ArticleRow(
                             modifier = Modifier
                                 .size(88.dp)
                                 .scale(thumbScale)
+                                .signalSharedImage(
+                                    key = "article_image_${article.id}",
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                    shape = RoundedCornerShape(14.dp)
+                                )
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(colors.card)
                         ) {

@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,8 +16,10 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +42,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
@@ -498,12 +505,24 @@ private fun SettingsActionRow(
                 }
             }
 
-            // Hairline chevron icon (.chev: 9x9, border-right, border-top, rotate 45deg)
-            Box(
-                modifier = Modifier
-                    .size(9.dp)
-                    .border(1.5.dp, colors.ink)
-            )
+            // Hairline chevron icon (.chev: 9x9, border-right: 1.5px solid, border-top: 1.5px solid, rotate 45deg)
+            Canvas(modifier = Modifier.size(width = 8.dp, height = 12.dp)) {
+                val strokeWidth = 1.5.dp.toPx()
+                val path = Path().apply {
+                    moveTo(1.dp.toPx(), 1.dp.toPx())
+                    lineTo(size.width - 1.dp.toPx(), size.height / 2f)
+                    lineTo(1.dp.toPx(), size.height - 1.dp.toPx())
+                }
+                drawPath(
+                    path = path,
+                    color = colors.ink,
+                    style = Stroke(
+                        width = strokeWidth,
+                        cap = StrokeCap.Square,
+                        join = StrokeJoin.Miter
+                    )
+                )
+            }
         }
     }
 }
@@ -537,23 +556,24 @@ private fun SlidingSegmentedControl(
 
     Box(
         modifier = Modifier
+            .height(IntrinsicSize.Min)
             .clip(CircleShape)
-            .border(1.dp, colors.ink, CircleShape)
             .background(colors.bg)
     ) {
-        // Sliding indicator (.seg .ind)
-        if (animatedWidth > 0f) {
+        // Sliding indicator (.seg .ind): top: 0, bottom: 0, background: var(--ink), border-radius: 999px
+        if (activeBounds.second > 0f) {
             Box(
                 modifier = Modifier
-                    .offset(x = with(density) { animatedLeft.toDp() })
+                    .fillMaxHeight()
+                    .offset { IntOffset(animatedLeft.roundToInt(), 0) }
                     .width(with(density) { animatedWidth.toDp() })
-                    .height(34.dp)
                     .clip(CircleShape)
                     .background(colors.ink)
             )
         }
 
         Row(
+            modifier = Modifier.fillMaxHeight(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             options.forEachIndexed { index, option ->
@@ -581,6 +601,13 @@ private fun SlidingSegmentedControl(
                 }
             }
         }
+
+        // Crisp 1px container outline overlay
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .border(1.dp, colors.ink, CircleShape)
+        )
     }
 }
 

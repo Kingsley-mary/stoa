@@ -5,6 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -118,192 +122,199 @@ fun SignalAppNav(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            NavHost(
-                navController = navController,
-                startDestination = startDestination,
-                modifier = Modifier.fillMaxSize(),
-                enterTransition = {
-                    fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration)) +
-                    slideInVertically(
-                        initialOffsetY = { 30 },
-                        animationSpec = SignalMotion.easeTween(SignalMotion.ContentEnterDuration)
-                    )
-                },
-                exitTransition = {
-                    fadeOut(SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)) +
-                    slideOutVertically(
-                        targetOffsetY = { 30 },
-                        animationSpec = SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)
-                    )
-                },
-                popEnterTransition = {
-                    fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration))
-                },
-                popExitTransition = {
-                    fadeOut(SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)) +
-                    slideOutVertically(
-                        targetOffsetY = { 30 },
-                        animationSpec = SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)
-                    )
-                }
-            ) {
-                // First Launch Add Sources Screen
-                composable("first_launch") {
-                    AddSourcesScreen(
-                        isFirstLaunch = true,
-                        repository = app.repository,
-                        onFinish = {
-                            app.settingsManager.setFirstLaunchCompleted(true)
-                            navController.navigate("home") {
-                                popUpTo("first_launch") { inclusive = true }
-                            }
-                        },
-                        onSkip = {
-                            app.settingsManager.setFirstLaunchCompleted(true)
-                            navController.navigate("home") {
-                                popUpTo("first_launch") { inclusive = true }
-                            }
-                        }
-                    )
-                }
-
-                // Home Screen
-                composable("home") {
-                    HomeScreen(
-                        repository = app.repository,
-                        isCompactLayout = isCompactLayout,
-                        onArticleClick = { articleId ->
-                            navController.navigate("reader/$articleId")
-                        },
-                        onSearchClick = {
-                            navController.navigate("search")
-                        },
-                        onSettingsClick = {
-                            navController.navigate("settings")
-                        },
-                        onAddSourcesClick = {
-                            navController.navigate("add_sources")
-                        }
-                    )
-                }
-
-                // Saved Screen
-                composable("saved") {
-                    SavedScreen(
-                        repository = app.repository,
-                        onArticleClick = { articleId ->
-                            navController.navigate("reader/$articleId")
-                        }
-                    )
-                }
-
-                // Sources Tab Screen
-                composable("sources") {
-                    SourcesScreen(
-                        repository = app.repository,
-                        onSourceClick = { sourceId ->
-                            navController.navigate("source_page/$sourceId")
-                        },
-                        onAddSourcesClick = {
-                            navController.navigate("add_sources")
-                        }
-                    )
-                }
-
-                // Source Page Screen
-                composable(
-                    route = "source_page/{sourceId}",
-                    arguments = listOf(navArgument("sourceId") { type = NavType.LongType })
-                ) { backStackEntry ->
-                    val sourceId = backStackEntry.arguments?.getLong("sourceId") ?: return@composable
-                    SourcePageScreen(
-                        sourceId = sourceId,
-                        repository = app.repository,
-                        onArticleClick = { articleId ->
-                            navController.navigate("reader/$articleId")
-                        },
-                        onBack = {
-                            navController.popBackStack()
-                        }
-                    )
-                }
-
-                // Add Sources Screen (from Sources tab or Empty states)
-                composable("add_sources") {
-                    AddSourcesScreen(
-                        isFirstLaunch = false,
-                        repository = app.repository,
-                        onFinish = {
-                            navController.popBackStack()
-                        },
-                        onSkip = {
-                            navController.popBackStack()
-                        }
-                    )
-                }
-
-                // Article Reader Screen with shared 500ms ease-out entrance
-                composable(
-                    route = "reader/{articleId}",
-                    arguments = listOf(navArgument("articleId") { type = NavType.LongType }),
+            @OptIn(ExperimentalSharedTransitionApi::class)
+            SharedTransitionLayout {
+                NavHost(
+                    navController = navController,
+                    startDestination = startDestination,
+                    modifier = Modifier.fillMaxSize(),
                     enterTransition = {
-                        fadeIn(SignalMotion.easeTween(SignalMotion.SharedElementDuration)) +
+                        fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration)) +
                         slideInVertically(
-                            initialOffsetY = { 60 },
-                            animationSpec = SignalMotion.easeTween(SignalMotion.SharedElementDuration)
+                            initialOffsetY = { 30 },
+                            animationSpec = SignalMotion.easeTween(SignalMotion.ContentEnterDuration)
                         )
                     },
                     exitTransition = {
-                        fadeOut(SignalMotion.easeTween(250))
+                        fadeOut(SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)) +
+                        slideOutVertically(
+                            targetOffsetY = { 30 },
+                            animationSpec = SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)
+                        )
+                    },
+                    popEnterTransition = {
+                        fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration))
                     },
                     popExitTransition = {
-                        fadeOut(SignalMotion.easeTween(250)) +
+                        fadeOut(SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)) +
                         slideOutVertically(
-                            targetOffsetY = { 60 },
-                            animationSpec = SignalMotion.easeTween(250)
+                            targetOffsetY = { 30 },
+                            animationSpec = SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)
                         )
                     }
-                ) { backStackEntry ->
-                    val articleId = backStackEntry.arguments?.getLong("articleId") ?: return@composable
-                    ReaderScreen(
-                        articleId = articleId,
-                        repository = app.repository,
-                        settingsManager = app.settingsManager,
-                        onBack = {
-                            navController.popBackStack()
-                        },
-                        onOpenSourcePage = { sourceId ->
-                            val popped = navController.popBackStack("source_page/$sourceId", inclusive = false)
-                            if (!popped) {
-                                navController.navigate("source_page/$sourceId")
+                ) {
+                    // First Launch Add Sources Screen
+                    composable("first_launch") {
+                        AddSourcesScreen(
+                            isFirstLaunch = true,
+                            repository = app.repository,
+                            onFinish = {
+                                app.settingsManager.setFirstLaunchCompleted(true)
+                                navController.navigate("home") {
+                                    popUpTo("first_launch") { inclusive = true }
+                                }
+                            },
+                            onSkip = {
+                                app.settingsManager.setFirstLaunchCompleted(true)
+                                navController.navigate("home") {
+                                    popUpTo("first_launch") { inclusive = true }
+                                }
                             }
-                        }
-                    )
-                }
+                        )
+                    }
 
-                // Search Screen
-                composable("search") {
-                    SearchScreen(
-                        repository = app.repository,
-                        settingsManager = app.settingsManager,
-                        onArticleClick = { articleId ->
-                            navController.navigate("reader/$articleId")
+                    // Home Screen
+                    composable("home") {
+                        HomeScreen(
+                            repository = app.repository,
+                            isCompactLayout = isCompactLayout,
+                            onArticleClick = { articleId ->
+                                navController.navigate("reader/$articleId")
+                            },
+                            onSearchClick = {
+                                navController.navigate("search")
+                            },
+                            onSettingsClick = {
+                                navController.navigate("settings")
+                            },
+                            onAddSourcesClick = {
+                                navController.navigate("add_sources")
+                            },
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedVisibilityScope = this@composable
+                        )
+                    }
+
+                    // Saved Screen
+                    composable("saved") {
+                        SavedScreen(
+                            repository = app.repository,
+                            onArticleClick = { articleId ->
+                                navController.navigate("reader/$articleId")
+                            }
+                        )
+                    }
+
+                    // Sources Tab Screen
+                    composable("sources") {
+                        SourcesScreen(
+                            repository = app.repository,
+                            onSourceClick = { sourceId ->
+                                navController.navigate("source_page/$sourceId")
+                            },
+                            onAddSourcesClick = {
+                                navController.navigate("add_sources")
+                            }
+                        )
+                    }
+
+                    // Source Page Screen
+                    composable(
+                        route = "source_page/{sourceId}",
+                        arguments = listOf(navArgument("sourceId") { type = NavType.LongType })
+                    ) { backStackEntry ->
+                        val sourceId = backStackEntry.arguments?.getLong("sourceId") ?: return@composable
+                        SourcePageScreen(
+                            sourceId = sourceId,
+                            repository = app.repository,
+                            onArticleClick = { articleId ->
+                                navController.navigate("reader/$articleId")
+                            },
+                            onBack = {
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+
+                    // Add Sources Screen (from Sources tab or Empty states)
+                    composable("add_sources") {
+                        AddSourcesScreen(
+                            isFirstLaunch = false,
+                            repository = app.repository,
+                            onFinish = {
+                                navController.popBackStack()
+                            },
+                            onSkip = {
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+
+                    // Article Reader Screen with shared 500ms ease-out entrance
+                    composable(
+                        route = "reader/{articleId}",
+                        arguments = listOf(navArgument("articleId") { type = NavType.LongType }),
+                        enterTransition = {
+                            fadeIn(SignalMotion.easeTween(SignalMotion.SharedElementDuration)) +
+                            slideInVertically(
+                                initialOffsetY = { 60 },
+                                animationSpec = SignalMotion.easeTween(SignalMotion.SharedElementDuration)
+                            )
                         },
-                        onBack = {
-                            navController.popBackStack()
+                        exitTransition = {
+                            fadeOut(SignalMotion.easeTween(250))
+                        },
+                        popExitTransition = {
+                            fadeOut(SignalMotion.easeTween(250)) +
+                            slideOutVertically(
+                                targetOffsetY = { 60 },
+                                animationSpec = SignalMotion.easeTween(250)
+                            )
                         }
-                    )
-                }
+                    ) { backStackEntry ->
+                        val articleId = backStackEntry.arguments?.getLong("articleId") ?: return@composable
+                        ReaderScreen(
+                            articleId = articleId,
+                            repository = app.repository,
+                            settingsManager = app.settingsManager,
+                            onBack = {
+                                navController.popBackStack()
+                            },
+                            onOpenSourcePage = { sourceId ->
+                                val popped = navController.popBackStack("source_page/$sourceId", inclusive = false)
+                                if (!popped) {
+                                    navController.navigate("source_page/$sourceId")
+                                }
+                            },
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedVisibilityScope = this@composable
+                        )
+                    }
 
-                // Settings Screen
-                composable("settings") {
-                    SettingsScreen(
-                        settingsManager = app.settingsManager,
-                        repository = app.repository,
-                        onBack = {
-                            navController.popBackStack()
-                        }
-                    )
+                    // Search Screen
+                    composable("search") {
+                        SearchScreen(
+                            repository = app.repository,
+                            settingsManager = app.settingsManager,
+                            onArticleClick = { articleId ->
+                                navController.navigate("reader/$articleId")
+                            },
+                            onBack = {
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+
+                    // Settings Screen
+                    composable("settings") {
+                        SettingsScreen(
+                            settingsManager = app.settingsManager,
+                            repository = app.repository,
+                            onBack = {
+                                navController.popBackStack()
+                            }
+                        )
+                    }
                 }
             }
         }
