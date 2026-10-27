@@ -1,8 +1,16 @@
 package com.signal.reader.ui.search
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -35,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
@@ -53,8 +62,13 @@ import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.ui.components.BackChevron
+import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.TimeUtils
+import com.signal.reader.ui.components.rememberSignalHaptics
+import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
+import com.signal.reader.ui.theme.signalPressScale
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -66,6 +80,7 @@ fun SearchScreen(
     modifier: Modifier = Modifier
 ) {
     val colors = SignalTheme.colors
+    val haptics = rememberSignalHaptics()
     val coroutineScope = rememberCoroutineScope()
     val settings by settingsManager.settingsFlow.collectAsState()
 
@@ -108,6 +123,7 @@ fun SearchScreen(
             Box(
                 modifier = Modifier
                     .size(28.dp)
+                    .signalPressScale(0.96f)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -146,15 +162,25 @@ fun SearchScreen(
                     .focusRequester(focusRequester)
             )
 
+            // #clear button (28x28 circle with ×, pops in)
             if (query.isNotEmpty()) {
+                val clearScale = remember { Animatable(0.6f) }
+                LaunchedEffect(Unit) {
+                    clearScale.animateTo(1f, SignalMotion.PressSpringSpec)
+                }
+
                 Box(
                     modifier = Modifier
                         .size(28.dp)
+                        .scale(clearScale.value)
                         .clip(CircleShape)
+                        .border(1.dp, colors.ink, CircleShape)
+                        .signalPressScale(0.96f)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
+                            haptics.tick()
                             query = ""
                         },
                     contentAlignment = Alignment.Center
@@ -162,8 +188,8 @@ fun SearchScreen(
                     Text(
                         text = "×",
                         color = colors.ink,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Light
+                        fontSize = 16.sp,
+                        lineHeight = 16.sp
                     )
                 }
             }
@@ -172,12 +198,22 @@ fun SearchScreen(
         HorizontalDivider(color = colors.line, thickness = 1.dp)
 
         if (query.isBlank()) {
-            // Before typing: Recent searches (up to 6)
-            if (settings.recentSearches.isNotEmpty()) {
+            // Recent Searches view
+            val recents = settings.recentSearches
+            if (recents.isEmpty()) {
+                Box(modifier = Modifier.padding(48.dp, 20.dp)) {
+                    Text(
+                        text = "Searches you make will show up here.",
+                        color = colors.mute,
+                        fontSize = 15.sp,
+                        lineHeight = 21.sp
+                    )
+                }
+            } else {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -191,62 +227,74 @@ fun SearchScreen(
                         color = colors.ink,
                         fontSize = 13.sp,
                         textDecoration = TextDecoration.Underline,
-                        modifier = Modifier.clickable { settingsManager.clearRecentSearches() }
+                        modifier = Modifier
+                            .signalPressScale(0.96f)
+                            .clickable {
+                                haptics.tick()
+                                settingsManager.clearRecentSearches()
+                            }
                     )
                 }
 
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(settings.recentSearches) { recent ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    query = recent
-                                    submitSearch(recent)
-                                }
-                                .padding(horizontal = 20.dp, vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                    itemsIndexed(recents, key = { _, q -> q }) { index, recentQuery ->
+                        var isCollapsing by remember { mutableStateOf(false) }
+
+                        AnimatedVisibility(
+                            visible = !isCollapsing,
+                            exit = shrinkVertically(tween(220, easing = SignalMotion.EaseOutQuart)) + fadeOut(tween(200))
                         ) {
-                            Text(
-                                text = recent,
-                                color = colors.ink,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Box(
+                            Row(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .clickable { settingsManager.removeRecentSearch(recent) },
-                                contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "×",
-                                    color = colors.mute,
-                                    fontSize = 20.sp
+                                    text = recentQuery,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = colors.ink,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            haptics.tick()
+                                            query = recentQuery
+                                        }
+                                        .padding(vertical = 14.dp)
                                 )
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .signalPressScale(0.96f)
+                                        .clickable {
+                                            haptics.tick()
+                                            isCollapsing = true
+                                            coroutineScope.launch {
+                                                delay(220)
+                                                settingsManager.removeRecentSearch(recentQuery)
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "×",
+                                        color = colors.mute,
+                                        fontSize = 20.sp
+                                    )
+                                }
                             }
+                            HorizontalDivider(color = colors.line, thickness = 1.dp)
                         }
-                        HorizontalDivider(color = colors.line, thickness = 1.dp)
                     }
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(48.dp),
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    Text(
-                        text = "Searches you make will show up here.",
-                        color = colors.mute,
-                        fontSize = 15.sp
-                    )
                 }
             }
         } else {
-            // Results or Zero Results
+            // Search Results view
             if (searchResults.isEmpty()) {
+                // Empty search result state (.empty)
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -254,9 +302,11 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
-                        text = "No articles match “$query”",
+                        text = "NO ARTICLES MATCH “${query.trim()}”",
                         style = SignalTheme.typography.heroHeadline,
-                        color = colors.ink
+                        color = colors.ink,
+                        fontSize = 26.sp,
+                        lineHeight = 28.sp
                     )
                     Text(
                         text = "Search covers recent articles from your sources. Try a shorter word or check the spelling.",
@@ -266,27 +316,25 @@ fun SearchScreen(
                     )
                 }
             } else {
-                val words = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+                Text(
+                    text = "${searchResults.size} ${if (searchResults.size == 1) "result" else "results"} for “${query.trim()}”",
+                    color = colors.mute,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp)
+                )
 
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    item {
-                        Text(
-                            text = "${searchResults.size} ${if (searchResults.size == 1) "result" else "results"} for “$query”",
-                            color = colors.mute,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-                        )
-                    }
-
-                    items(searchResults, key = { it.id }) { article ->
-                        SearchResultRow(
-                            article = article,
-                            searchWords = words,
-                            onClick = {
-                                submitSearch(query)
-                                onArticleClick(article.id)
-                            }
-                        )
+                    itemsIndexed(searchResults, key = { _, item -> item.id }) { index, article ->
+                        StaggeredItem(index = index) {
+                            SearchResultRow(
+                                article = article,
+                                queryTerms = query.trim().split(Regex("\\s+")).filter { it.isNotBlank() },
+                                onClick = {
+                                    submitSearch(query)
+                                    onArticleClick(article.id)
+                                }
+                            )
+                        }
                     }
 
                     item {
@@ -301,15 +349,27 @@ fun SearchScreen(
 @Composable
 private fun SearchResultRow(
     article: ArticleEntity,
-    searchWords: List<String>,
+    queryTerms: List<String>,
     onClick: () -> Unit
 ) {
     val colors = SignalTheme.colors
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val thumbScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1.0f,
+        animationSpec = SignalMotion.PressSpringSpec,
+        label = "searchThumbScale"
+    )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .signalPressScale(0.985f)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null
+            ) { onClick() }
     ) {
         HorizontalDivider(color = colors.line, thickness = 1.dp)
 
@@ -318,11 +378,12 @@ private fun SearchResultRow(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 18.dp)
                 .alpha(if (article.read) 0.45f else 1.0f),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.Top
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Meta
                 Row(
@@ -349,30 +410,31 @@ private fun SearchResultRow(
                     )
                 }
 
-                // Title with matched words underlined
+                // Highlighted Title
                 Text(
-                    text = highlightUnderline(article.title, searchWords),
+                    text = highlightMatches(article.title, queryTerms),
                     style = SignalTheme.typography.rowHeadline,
                     color = colors.ink
                 )
 
-                // Excerpt with matched words underlined
+                // Highlighted Excerpt (if exists)
                 if (article.excerpt.isNotBlank()) {
                     Text(
-                        text = highlightUnderline(article.excerpt, searchWords),
-                        color = colors.mute,
+                        text = highlightMatches(article.excerpt, queryTerms),
                         fontSize = 14.sp,
                         lineHeight = 19.sp,
+                        color = colors.mute,
                         maxLines = 2
                     )
                 }
             }
 
-            // Thumbnail
+            // Thumbnail (88x88)
             if (!article.imageUrl.isNullOrBlank()) {
                 Box(
                     modifier = Modifier
                         .size(88.dp)
+                        .scale(thumbScale)
                         .clip(RoundedCornerShape(14.dp))
                         .background(colors.card)
                 ) {
@@ -388,41 +450,42 @@ private fun SearchResultRow(
     }
 }
 
-// Helper to underline matched search words per brief: "Matched words are underlined, not coloured"
-private fun highlightUnderline(text: String, words: List<String>): androidx.compose.ui.text.AnnotatedString {
-    if (words.isEmpty() || text.isBlank()) return androidx.compose.ui.text.AnnotatedString(text)
+/**
+ * Renders text with 2px underline mark style for matched search query terms
+ * matching HTML mockup: mark { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+ */
+private fun highlightMatches(text: String, queryTerms: List<String>): androidx.compose.ui.text.AnnotatedString {
+    if (queryTerms.isEmpty()) return androidx.compose.ui.text.AnnotatedString(text)
 
     val lowerText = text.lowercase()
-    val ranges = mutableListOf<IntRange>()
+    val matchRanges = mutableListOf<IntRange>()
 
-    for (word in words) {
+    for (term in queryTerms) {
+        val lowerTerm = term.lowercase()
         var startIndex = 0
         while (startIndex < lowerText.length) {
-            val found = lowerText.indexOf(word, startIndex)
-            if (found >= 0) {
-                ranges.add(found until (found + word.length))
-                startIndex = found + word.length
-            } else {
-                break
-            }
+            val idx = lowerText.indexOf(lowerTerm, startIndex)
+            if (idx == -1) break
+            matchRanges.add(idx until (idx + lowerTerm.length))
+            startIndex = idx + lowerTerm.length
         }
     }
 
-    val sortedRanges = ranges.sortedBy { it.first }
-
     return buildAnnotatedString {
-        var currentIdx = 0
-        for (range in sortedRanges) {
-            if (range.first >= currentIdx) {
-                append(text.substring(currentIdx, range.first))
-                withStyle(SpanStyle(textDecoration = TextDecoration.Underline)) {
-                    append(text.substring(range.first, minOf(range.last + 1, text.length)))
+        for (i in text.indices) {
+            val isMatched = matchRanges.any { i in it }
+            if (isMatched) {
+                withStyle(
+                    SpanStyle(
+                        textDecoration = TextDecoration.Underline,
+                        fontWeight = FontWeight.Bold
+                    )
+                ) {
+                    append(text[i])
                 }
-                currentIdx = minOf(range.last + 1, text.length)
+            } else {
+                append(text[i])
             }
-        }
-        if (currentIdx < text.length) {
-            append(text.substring(currentIdx))
         }
     }
 }

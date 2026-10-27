@@ -5,11 +5,13 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
@@ -29,12 +32,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -44,7 +52,11 @@ import com.signal.reader.data.opml.OpmlManager
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.data.sync.RefreshWorker
 import com.signal.reader.ui.components.BackChevron
+import com.signal.reader.ui.components.StaggeredItem
+import com.signal.reader.ui.components.rememberSignalHaptics
+import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
+import com.signal.reader.ui.theme.signalPressScale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -59,6 +71,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val colors = SignalTheme.colors
+    val haptics = rememberSignalHaptics()
     val coroutineScope = rememberCoroutineScope()
     val settings by settingsManager.settingsFlow.collectAsState()
 
@@ -69,24 +82,19 @@ fun SettingsScreen(
         contract = ActivityResultContracts.CreateDocument("text/xml")
     ) { uri: Uri? ->
         if (uri != null) {
-            coroutineScope.launch {
-                val sources = repository.getAllSourcesFlow()
-                withContext(Dispatchers.IO) {
-                    try {
-                        val allSources = repository.getAllSourcesFlow()
-                        val sourcesList = repository.searchArticles("").map { it.sourceName } // or get from repo
-                        val dbSources = com.signal.reader.SignalApplication.instance.database.sourceDao().getAllSources()
-                        val opmlString = OpmlManager.exportToOpml(dbSources)
-                        context.contentResolver.openOutputStream(uri)?.use { os ->
-                            os.write(opmlString.toByteArray())
-                        }
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Exported sources to OPML", Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val dbSources = com.signal.reader.SignalApplication.instance.database.sourceDao().getAllSources()
+                    val opmlString = OpmlManager.exportToOpml(dbSources)
+                    context.contentResolver.openOutputStream(uri)?.use { os ->
+                        os.write(opmlString.toByteArray())
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Exported sources to OPML", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -143,7 +151,11 @@ fun SettingsScreen(
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clickable { onBack() },
+                    .signalPressScale(0.96f)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onBack() },
                 contentAlignment = Alignment.Center
             ) {
                 BackChevron(color = colors.ink)
@@ -154,204 +166,248 @@ fun SettingsScreen(
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             item {
-                Text(
-                    text = "Settings",
-                    style = SignalTheme.typography.screenTitle,
-                    color = colors.ink,
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 26.dp, bottom = 8.dp)
-                )
+                StaggeredItem(index = 0) {
+                    Text(
+                        text = "SETTINGS",
+                        style = SignalTheme.typography.screenTitle,
+                        color = colors.ink,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 26.dp, bottom = 8.dp)
+                    )
+                }
             }
 
             // Appearance Section
             item {
-                SettingsSectionHeader("Appearance")
+                StaggeredItem(index = 1) {
+                    Column {
+                        SettingsSectionHeader("Appearance")
 
-                // Theme Segmented Control
-                SettingsRow(label = "Theme") {
-                    SegmentedControl(
-                        options = listOf("Auto", "Light", "Dark"),
-                        selectedIndex = when (settings.theme) {
-                            "light" -> 1
-                            "dark" -> 2
-                            else -> 0
-                        },
-                        onSelect = { idx ->
-                            val chosen = when (idx) {
-                                1 -> "light"
-                                2 -> "dark"
-                                else -> "auto"
-                            }
-                            settingsManager.updateTheme(chosen)
+                        // Theme Segmented Control
+                        SettingsRow(label = "Theme") {
+                            SlidingSegmentedControl(
+                                options = listOf("Auto", "Light", "Dark"),
+                                selectedIndex = when (settings.theme) {
+                                    "light" -> 1
+                                    "dark" -> 2
+                                    else -> 0
+                                },
+                                onSelect = { idx ->
+                                    haptics.tick()
+                                    val newTheme = when (idx) {
+                                        1 -> "light"
+                                        2 -> "dark"
+                                        else -> "auto"
+                                    }
+                                    settingsManager.updateTheme(newTheme)
+                                }
+                            )
                         }
-                    )
-                }
 
-                // Text Size Step Control
-                SettingsRow(
-                    label = "Text size",
-                    sublabel = "For reading articles"
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StepButton(
-                            text = "A−",
-                            enabled = settings.textSizeIndex > 0,
-                            onClick = { settingsManager.updateTextSizeIndex(settings.textSizeIndex - 1) }
-                        )
-                        StepButton(
-                            text = "A+",
-                            enabled = settings.textSizeIndex < fontSizes.size - 1,
-                            onClick = { settingsManager.updateTextSizeIndex(settings.textSizeIndex + 1) }
+                        // Text Size Step Control
+                        val currentSizeIndex = settings.textSizeIndex.coerceIn(0, fontSizes.size - 1)
+                        SettingsRow(
+                            label = "Text size",
+                            sublabel = "For reading articles"
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                StepButton(
+                                    text = "A−",
+                                    enabled = currentSizeIndex > 0,
+                                    onClick = {
+                                        haptics.tick()
+                                        if (currentSizeIndex > 0) {
+                                            settingsManager.updateTextSizeIndex(currentSizeIndex - 1)
+                                        }
+                                    }
+                                )
+                                StepButton(
+                                    text = "A+",
+                                    enabled = currentSizeIndex < fontSizes.size - 1,
+                                    onClick = {
+                                        haptics.tick()
+                                        if (currentSizeIndex < fontSizes.size - 1) {
+                                            settingsManager.updateTextSizeIndex(currentSizeIndex + 1)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        // Preview Text (.prev)
+                        Text(
+                            text = "Soft shadows, long exposures and no studio strobes. The results are darker, grainier and strangely calm.",
+                            fontSize = fontSizes[currentSizeIndex],
+                            lineHeight = (fontSizes[currentSizeIndex].value * 1.6f).sp,
+                            color = colors.ink,
+                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 22.dp)
                         )
                     }
                 }
-
-                // Live Preview Line
-                Text(
-                    text = "Soft shadows, long exposures and no studio strobes. The results are darker, grainier and strangely calm.",
-                    fontSize = fontSizes[settings.textSizeIndex],
-                    lineHeight = fontSizes[settings.textSizeIndex] * 1.6f,
-                    color = colors.ink,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
-                )
             }
 
             // Home Section
             item {
-                SettingsSectionHeader("Home")
+                StaggeredItem(index = 2) {
+                    Column {
+                        SettingsSectionHeader("Home")
 
-                // Layout Segmented Control
-                SettingsRow(label = "Layout") {
-                    SegmentedControl(
-                        options = listOf("Cards", "Compact"),
-                        selectedIndex = if (settings.homeLayout == "compact") 1 else 0,
-                        onSelect = { idx ->
-                            settingsManager.updateHomeLayout(if (idx == 1) "compact" else "cards")
+                        SettingsRow(label = "Layout") {
+                            SlidingSegmentedControl(
+                                options = listOf("Cards", "Compact"),
+                                selectedIndex = if (settings.homeLayout == "compact") 1 else 0,
+                                onSelect = { idx ->
+                                    haptics.tick()
+                                    val newLayout = if (idx == 1) "compact" else "cards"
+                                    settingsManager.updateHomeLayout(newLayout)
+                                }
+                            )
                         }
-                    )
+                    }
                 }
             }
 
             // Refresh Section
             item {
-                SettingsSectionHeader("Refresh")
+                StaggeredItem(index = 3) {
+                    Column {
+                        SettingsSectionHeader("Refresh")
 
-                // Background Check Switch
-                SettingsRow(
-                    label = "Check in the background",
-                    sublabel = "So new articles are ready when you open the app"
-                ) {
-                    SignalSwitch(
-                        checked = settings.backgroundRefresh,
-                        onCheckedChange = { checked ->
-                            settingsManager.updateBackgroundRefresh(checked)
-                            RefreshWorker.schedule(
-                                context = context,
-                                intervalMinutes = settings.refreshIntervalMinutes,
-                                wifiOnly = settings.wifiOnly,
-                                enabled = checked
-                            )
-                        }
-                    )
-                }
-
-                // How Often
-                val bgEnabled = settings.backgroundRefresh
-                Box(modifier = Modifier.alpha(if (bgEnabled) 1.0f else 0.4f)) {
-                    SettingsRow(label = "How often") {
-                        val freqOptions = listOf(30L, 60L, 180L)
-                        val freqLabels = listOf("30 min", "1 hr", "3 hr")
-                        SegmentedControl(
-                            options = freqLabels,
-                            selectedIndex = freqOptions.indexOf(settings.refreshIntervalMinutes).coerceAtLeast(0),
-                            onSelect = { idx ->
-                                if (bgEnabled) {
-                                    val interval = freqOptions[idx]
-                                    settingsManager.updateRefreshInterval(interval)
-                                    RefreshWorker.schedule(
-                                        context = context,
-                                        intervalMinutes = interval,
-                                        wifiOnly = settings.wifiOnly,
-                                        enabled = true
-                                    )
-                                }
-                            }
-                        )
-                    }
-                }
-
-                // Wi-Fi Only Switch
-                Box(modifier = Modifier.alpha(if (bgEnabled) 1.0f else 0.4f)) {
-                    SettingsRow(label = "Wi-Fi only") {
-                        SignalSwitch(
-                            checked = settings.wifiOnly,
-                            onCheckedChange = { checked ->
-                                if (bgEnabled) {
-                                    settingsManager.updateWifiOnly(checked)
+                        // Background check switch
+                        val isBgEnabled = settings.backgroundRefresh
+                        SettingsRow(
+                            label = "Check in the background",
+                            sublabel = "So new articles are ready when you open the app"
+                        ) {
+                            SignalSwitch(
+                                checked = isBgEnabled,
+                                onCheckedChange = { checked ->
+                                    haptics.tick()
+                                    settingsManager.updateBackgroundRefresh(checked)
                                     RefreshWorker.schedule(
                                         context = context,
                                         intervalMinutes = settings.refreshIntervalMinutes,
-                                        wifiOnly = checked,
-                                        enabled = true
+                                        wifiOnly = settings.wifiOnly,
+                                        enabled = checked
                                     )
                                 }
+                            )
+                        }
+
+                        // Frequency (dimmed if bg disabled)
+                        Box(modifier = Modifier.alpha(if (isBgEnabled) 1.0f else 0.4f)) {
+                            SettingsRow(label = "How often") {
+                                SlidingSegmentedControl(
+                                    options = listOf("30 min", "1 hr", "3 hr"),
+                                    selectedIndex = when (settings.refreshIntervalMinutes) {
+                                        30L -> 0
+                                        180L -> 2
+                                        else -> 1
+                                    },
+                                    onSelect = { idx ->
+                                        if (isBgEnabled) {
+                                            haptics.tick()
+                                            val minutes = when (idx) {
+                                                0 -> 30L
+                                                2 -> 180L
+                                                else -> 60L
+                                            }
+                                            settingsManager.updateRefreshInterval(minutes)
+                                            RefreshWorker.schedule(
+                                                context = context,
+                                                intervalMinutes = minutes,
+                                                wifiOnly = settings.wifiOnly,
+                                                enabled = true
+                                            )
+                                        }
+                                    }
+                                )
                             }
+                        }
+
+                        // Wi-Fi only (dimmed if bg disabled)
+                        Box(modifier = Modifier.alpha(if (isBgEnabled) 1.0f else 0.4f)) {
+                            SettingsRow(label = "Wi-Fi only") {
+                                SignalSwitch(
+                                    checked = settings.wifiOnly,
+                                    onCheckedChange = { checked ->
+                                        if (isBgEnabled) {
+                                            haptics.tick()
+                                            settingsManager.updateWifiOnly(checked)
+                                            RefreshWorker.schedule(
+                                                context = context,
+                                                intervalMinutes = settings.refreshIntervalMinutes,
+                                                wifiOnly = checked,
+                                                enabled = true
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        // Battery target note (.note)
+                        Text(
+                            text = "These are targets. Android decides the exact timing to save battery, so a check can run later than you set.",
+                            color = colors.mute,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
                         )
                     }
                 }
-
-                // Note
-                Text(
-                    text = "These are targets. Android decides the exact timing to save battery, so a check can run later than you set.",
-                    color = colors.mute,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
-                )
             }
 
             // Your Sources Section
             item {
-                SettingsSectionHeader("Your sources")
+                StaggeredItem(index = 4) {
+                    Column {
+                        SettingsSectionHeader("Your sources")
 
-                SettingsActionRow(
-                    label = "Import sources",
-                    sublabel = "From an OPML file",
-                    onClick = { importOpmlLauncher.launch(arrayOf("text/xml", "application/xml", "*/*")) }
-                )
+                        SettingsActionRow(
+                            label = "Import sources",
+                            sublabel = "From an OPML file",
+                            onClick = { importOpmlLauncher.launch(arrayOf("text/xml", "application/xml", "*/*")) }
+                        )
 
-                SettingsActionRow(
-                    label = "Export sources",
-                    sublabel = "Save your list as an OPML file",
-                    onClick = { exportOpmlLauncher.launch("signal_sources.opml") }
-                )
+                        SettingsActionRow(
+                            label = "Export sources",
+                            sublabel = "Save your list as an OPML file",
+                            onClick = { exportOpmlLauncher.launch("signal_sources.opml") }
+                        )
+                    }
+                }
             }
 
             // About Section
             item {
-                SettingsSectionHeader("About")
+                StaggeredItem(index = 5) {
+                    Column {
+                        SettingsSectionHeader("About")
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Version",
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 17.sp,
-                        color = colors.ink
-                    )
-                    Text(
-                        text = "1.0",
-                        fontSize = 14.sp,
-                        color = colors.mute
-                    )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 18.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Version",
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 17.sp,
+                                color = colors.ink
+                            )
+                            Text(
+                                text = "1.0",
+                                fontSize = 14.sp,
+                                color = colors.mute
+                            )
+                        }
+
+                        HorizontalDivider(color = colors.line, thickness = 1.dp)
+                        Spacer(modifier = Modifier.height(48.dp))
+                    }
                 }
-
-                HorizontalDivider(color = colors.line, thickness = 1.dp)
-                Spacer(modifier = Modifier.height(48.dp))
             }
         }
     }
@@ -414,6 +470,7 @@ private fun SettingsActionRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .signalPressScale(0.985f)
             .clickable(onClick = onClick)
     ) {
         HorizontalDivider(color = colors.line, thickness = 1.dp)
@@ -440,47 +497,88 @@ private fun SettingsActionRow(
                     )
                 }
             }
-            // Chevron arrow >
-            Text(
-                text = "›",
-                color = colors.ink,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Light
+
+            // Hairline chevron icon (.chev: 9x9, border-right, border-top, rotate 45deg)
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .border(1.5.dp, colors.ink)
             )
         }
     }
 }
 
+/**
+ * Segmented Control with a single sliding indicator pill (.seg .ind)
+ * matching: transition: left .32s var(--ease), width .32s var(--ease)
+ */
 @Composable
-private fun SegmentedControl(
+private fun SlidingSegmentedControl(
     options: List<String>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit
 ) {
     val colors = SignalTheme.colors
+    val density = LocalDensity.current
 
-    Row(
+    val itemBounds = remember { mutableStateMapOf<Int, Pair<Float, Float>>() }
+    val activeBounds = itemBounds[selectedIndex] ?: Pair(0f, 0f)
+
+    val animatedLeft by animateFloatAsState(
+        targetValue = activeBounds.first,
+        animationSpec = SignalMotion.easeTween(320),
+        label = "segPillLeft"
+    )
+    val animatedWidth by animateFloatAsState(
+        targetValue = activeBounds.second,
+        animationSpec = SignalMotion.easeTween(320),
+        label = "segPillWidth"
+    )
+
+    Box(
         modifier = Modifier
             .clip(CircleShape)
             .border(1.dp, colors.ink, CircleShape)
             .background(colors.bg)
     ) {
-        options.forEachIndexed { index, option ->
-            val isSelected = index == selectedIndex
+        // Sliding indicator (.seg .ind)
+        if (animatedWidth > 0f) {
             Box(
                 modifier = Modifier
+                    .offset(x = with(density) { animatedLeft.toDp() })
+                    .width(with(density) { animatedWidth.toDp() })
+                    .height(34.dp)
                     .clip(CircleShape)
-                    .background(if (isSelected) colors.ink else colors.bg)
-                    .clickable { onSelect(index) }
-                    .padding(horizontal = 15.dp, vertical = 9.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = option,
-                    color = if (isSelected) colors.bg else colors.ink,
-                    fontSize = 13.sp,
-                    fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
-                )
+                    .background(colors.ink)
+            )
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            options.forEachIndexed { index, option ->
+                val isSelected = index == selectedIndex
+                Box(
+                    modifier = Modifier
+                        .onGloballyPositioned { coords ->
+                            val x = coords.positionInParent().x
+                            val w = coords.size.width.toFloat()
+                            itemBounds[index] = Pair(x, w)
+                        }
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onSelect(index) }
+                        .padding(horizontal = 15.dp, vertical = 9.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = option,
+                        color = if (isSelected) colors.bg else colors.ink,
+                        fontSize = 13.sp,
+                        fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
+                    )
+                }
             }
         }
     }
@@ -498,6 +596,7 @@ private fun StepButton(
         modifier = Modifier
             .clip(CircleShape)
             .border(1.dp, if (enabled) colors.ink else colors.line, CircleShape)
+            .signalPressScale(0.96f)
             .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = 16.dp, vertical = 9.dp),
         contentAlignment = Alignment.Center
@@ -511,6 +610,10 @@ private fun StepButton(
     }
 }
 
+/**
+ * Tactile Switch (.sw) matching CSS:
+ * width: 48px, height: 28px, thumb: 20px, spring translate 20px
+ */
 @Composable
 private fun SignalSwitch(
     checked: Boolean,
@@ -520,7 +623,7 @@ private fun SignalSwitch(
 
     val knobOffsetX by animateFloatAsState(
         targetValue = if (checked) 20f else 0f,
-        animationSpec = tween(150),
+        animationSpec = SignalMotion.SpringSpec,
         label = "switchKnob"
     )
 
@@ -530,6 +633,7 @@ private fun SignalSwitch(
             .clip(CircleShape)
             .background(if (checked) colors.ink else colors.bg)
             .border(1.dp, colors.ink, CircleShape)
+            .signalPressScale(0.96f)
             .clickable { onCheckedChange(!checked) }
             .padding(3.dp)
     ) {

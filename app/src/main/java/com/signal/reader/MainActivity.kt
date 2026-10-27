@@ -5,8 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -14,9 +17,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -35,6 +35,7 @@ import com.signal.reader.ui.settings.SettingsScreen
 import com.signal.reader.ui.sources.AddSourcesScreen
 import com.signal.reader.ui.sources.SourcePageScreen
 import com.signal.reader.ui.sources.SourcesScreen
+import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
 
 class MainActivity : ComponentActivity() {
@@ -89,8 +90,8 @@ fun SignalAppNav(
         bottomBar = {
             AnimatedVisibility(
                 visible = isBottomBarVisible,
-                enter = fadeIn(),
-                exit = fadeOut()
+                enter = fadeIn(tween(200)),
+                exit = fadeOut(tween(200))
             ) {
                 SignalBottomBar(
                     currentTab = currentTab,
@@ -120,7 +121,31 @@ fun SignalAppNav(
             NavHost(
                 navController = navController,
                 startDestination = startDestination,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                enterTransition = {
+                    fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration)) +
+                    slideInVertically(
+                        initialOffsetY = { 30 },
+                        animationSpec = SignalMotion.easeTween(SignalMotion.ContentEnterDuration)
+                    )
+                },
+                exitTransition = {
+                    fadeOut(SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)) +
+                    slideOutVertically(
+                        targetOffsetY = { 30 },
+                        animationSpec = SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)
+                    )
+                },
+                popEnterTransition = {
+                    fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration))
+                },
+                popExitTransition = {
+                    fadeOut(SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)) +
+                    slideOutVertically(
+                        targetOffsetY = { 30 },
+                        animationSpec = SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)
+                    )
+                }
             ) {
                 // First Launch Add Sources Screen
                 composable("first_launch") {
@@ -217,22 +242,37 @@ fun SignalAppNav(
                     )
                 }
 
-                // Article Reader Screen
+                // Article Reader Screen with shared 500ms ease-out entrance
                 composable(
                     route = "reader/{articleId}",
-                    arguments = listOf(navArgument("articleId") { type = NavType.LongType })
+                    arguments = listOf(navArgument("articleId") { type = NavType.LongType }),
+                    enterTransition = {
+                        fadeIn(SignalMotion.easeTween(SignalMotion.SharedElementDuration)) +
+                        slideInVertically(
+                            initialOffsetY = { 60 },
+                            animationSpec = SignalMotion.easeTween(SignalMotion.SharedElementDuration)
+                        )
+                    },
+                    exitTransition = {
+                        fadeOut(SignalMotion.easeTween(250))
+                    },
+                    popExitTransition = {
+                        fadeOut(SignalMotion.easeTween(250)) +
+                        slideOutVertically(
+                            targetOffsetY = { 60 },
+                            animationSpec = SignalMotion.easeTween(250)
+                        )
+                    }
                 ) { backStackEntry ->
                     val articleId = backStackEntry.arguments?.getLong("articleId") ?: return@composable
                     ReaderScreen(
                         articleId = articleId,
                         repository = app.repository,
+                        settingsManager = app.settingsManager,
                         onBack = {
                             navController.popBackStack()
                         },
                         onOpenSourcePage = { sourceId ->
-                            // Back-stack rule from Brief section 5:
-                            // "Opening a Source page from the Reader's Source field must return to the existing Source page
-                            // if one is already in the stack, not push a new one."
                             val popped = navController.popBackStack("source_page/$sourceId", inclusive = false)
                             if (!popped) {
                                 navController.navigate("source_page/$sourceId")

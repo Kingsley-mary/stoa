@@ -3,9 +3,7 @@ package com.signal.reader.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
@@ -19,15 +17,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -43,17 +37,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.signal.reader.data.local.entity.ArticleEntity
+import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
+import com.signal.reader.ui.theme.signalPressScale
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -65,7 +58,7 @@ fun ArticleRow(
     modifier: Modifier = Modifier
 ) {
     val colors = SignalTheme.colors
-    val haptic = LocalHapticFeedback.current
+    val haptics = rememberSignalHaptics()
     val coroutineScope = rememberCoroutineScope()
 
     val offsetX = remember { Animatable(0f) }
@@ -77,7 +70,7 @@ fun ArticleRow(
 
     val thumbScale by animateFloatAsState(
         targetValue = if (isPressed) 0.94f else 1.0f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
+        animationSpec = SignalMotion.PressSpringSpec,
         label = "thumbScale"
     )
 
@@ -93,19 +86,18 @@ fun ArticleRow(
         label = "underlayContent"
     )
 
-    val thresholdPx = 90f * 2.5f // standard ~90dp
+    val thresholdPx = 90f * 2.5f
     val resistanceLimit = 110f * 2.5f
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(124.dp)
             .background(underlayBg)
     ) {
-        // Underlay: reveals Save / Unsave bookmark
+        // Underlay (.under): reveals Save / Unsave bookmark
         Row(
             modifier = Modifier
-                .fillMaxHeight()
+                .align(Alignment.CenterStart)
                 .padding(start = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -125,19 +117,20 @@ fun ArticleRow(
             )
         }
 
-        // Foreground: article row content that slides rightward
+        // Foreground (.fg): article row content that slides rightward
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .offset { IntOffset(offsetX.value.roundToInt(), 0) }
                 .background(colors.bg)
+                .signalPressScale(0.985f)
                 .draggable(
                     orientation = Orientation.Horizontal,
                     state = rememberDraggableState { delta ->
                         coroutineScope.launch {
                             val newRaw = (offsetX.value + delta).coerceAtLeast(0f)
                             val damped = if (newRaw > resistanceLimit) {
-                                resistanceLimit + (newRaw - resistanceLimit) * 0.2f
+                                resistanceLimit + (newRaw - resistanceLimit) * 0.3f
                             } else {
                                 newRaw
                             }
@@ -147,7 +140,7 @@ fun ArticleRow(
                             if (nowArmed != isArmed) {
                                 isArmed = nowArmed
                                 if (nowArmed && !hasHapticFired) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptics.tick()
                                     hasHapticFired = true
                                 } else if (!nowArmed) {
                                     hasHapticFired = false
@@ -164,10 +157,7 @@ fun ArticleRow(
                             hasHapticFired = false
                             offsetX.animateTo(
                                 targetValue = 0f,
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessMediumLow
-                                )
+                                animationSpec = SignalMotion.SwipeSpringSpec
                             )
                         }
                     }
@@ -181,12 +171,12 @@ fun ArticleRow(
                     }
                 }
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 HorizontalDivider(color = colors.line, thickness = 1.dp)
 
                 Row(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 18.dp)
                         .alpha(if (article.read) 0.45f else 1.0f),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -203,7 +193,7 @@ fun ArticleRow(
                         ) {
                             AnimatedVisibility(
                                 visible = !article.read,
-                                exit = shrinkHorizontally(animationSpec = tween(250))
+                                exit = shrinkHorizontally(animationSpec = SignalMotion.easeTween(250))
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -238,8 +228,7 @@ fun ArticleRow(
                         Text(
                             text = article.title,
                             style = SignalTheme.typography.rowHeadline,
-                            color = colors.ink,
-                            maxLines = 2
+                            color = colors.ink
                         )
                     }
 
@@ -262,36 +251,6 @@ fun ArticleRow(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun BookmarkIcon(
-    isFilled: Boolean,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    androidx.compose.foundation.Canvas(modifier = modifier) {
-        val path = androidx.compose.ui.graphics.Path().apply {
-            moveTo(size.width * 0.25f, size.height * 0.125f)
-            lineTo(size.width * 0.75f, size.height * 0.125f)
-            lineTo(size.width * 0.75f, size.height * 0.875f)
-            lineTo(size.width * 0.5f, size.height * 0.7f)
-            lineTo(size.width * 0.25f, size.height * 0.875f)
-            close()
-        }
-        if (isFilled) {
-            drawPath(path = path, color = color)
-        } else {
-            drawPath(
-                path = path,
-                color = color,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                    width = 1.6f * density,
-                    join = androidx.compose.ui.graphics.StrokeJoin.Round
-                )
-            )
         }
     }
 }

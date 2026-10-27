@@ -26,7 +26,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
+import com.signal.reader.ui.theme.signalPressScale
 
 enum class SignalTab(val title: String) {
     HOME("Home"),
@@ -47,11 +49,13 @@ fun SignalBottomBar(
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val tabWidth = screenWidth / tabs.size
 
-    val targetOffsetX = tabWidth * selectedIndex
+    // Mockup indicator: width is 32% of tab width, centered at left + 34%
+    val indicatorWidth = tabWidth * 0.32f
+    val targetOffsetX = (tabWidth * selectedIndex) + (tabWidth * 0.34f)
 
     val animatedOffsetX by animateFloatAsState(
         targetValue = with(LocalDensity.current) { targetOffsetX.toPx() },
-        animationSpec = if (SignalTheme.reducedMotion) tween(0) else tween(durationMillis = 300),
+        animationSpec = if (SignalTheme.reducedMotion) tween(0) else SignalMotion.easeTween(SignalMotion.TabBarDuration),
         label = "tabIndicator"
     )
 
@@ -61,7 +65,7 @@ fun SignalBottomBar(
             .background(colors.bg)
             .navigationBarsPadding()
     ) {
-        // Top divider with sliding indicator line
+        // Top divider with sliding indicator line (.tind)
         Box(modifier = Modifier.fillMaxWidth().height(2.dp)) {
             HorizontalDivider(
                 color = colors.line,
@@ -73,7 +77,7 @@ fun SignalBottomBar(
             Box(
                 modifier = Modifier
                     .offset(x = with(LocalDensity.current) { animatedOffsetX.toDp() })
-                    .width(tabWidth)
+                    .width(indicatorWidth)
                     .height(2.dp)
                     .background(colors.ink)
             )
@@ -87,11 +91,12 @@ fun SignalBottomBar(
                 Box(
                     modifier = Modifier
                         .weight(1f)
+                        .signalPressScale(0.94f)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { onTabSelected(tab) }
-                        .padding(vertical = 16.dp),
+                        .padding(top = 16.dp, bottom = 18.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(

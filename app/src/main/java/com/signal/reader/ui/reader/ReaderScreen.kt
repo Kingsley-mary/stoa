@@ -3,11 +3,13 @@ package com.signal.reader.ui.reader
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -42,23 +44,31 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.ui.components.BackChevron
 import com.signal.reader.ui.components.BookmarkIcon
+import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.TimeUtils
+import com.signal.reader.ui.components.rememberSignalHaptics
+import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
+import com.signal.reader.ui.theme.signalPressScale
 import kotlinx.coroutines.launch
 import org.jsoup.Jsoup
 import kotlin.math.roundToInt
@@ -67,13 +77,17 @@ import kotlin.math.roundToInt
 fun ReaderScreen(
     articleId: Long,
     repository: FeedRepository,
+    settingsManager: SettingsManager,
     onBack: () -> Unit,
     onOpenSourcePage: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current.density
     val colors = SignalTheme.colors
+    val haptics = rememberSignalHaptics()
     val coroutineScope = rememberCoroutineScope()
+    val settings by settingsManager.settingsFlow.collectAsState()
 
     val article by repository.getArticleByIdFlow(articleId).collectAsState(initial = null)
 
@@ -84,14 +98,16 @@ fun ReaderScreen(
 
     val listState = rememberLazyListState()
 
-    // Reading progress calculation
+    // Reading progress calculation (tracks scroll from 0 to 1)
     val readingProgress by remember {
         derivedStateOf {
             val totalItems = listState.layoutInfo.totalItemsCount
             if (totalItems <= 1) 0f
             else {
-                val visible = listState.firstVisibleItemIndex.toFloat()
-                (visible / (totalItems - 1)).coerceIn(0f, 1f)
+                val firstIdx = listState.firstVisibleItemIndex.toFloat()
+                val offset = listState.firstVisibleItemScrollOffset.toFloat()
+                val progress = (firstIdx / (totalItems - 1)).coerceIn(0f, 1f)
+                progress
             }
         }
     }
@@ -112,8 +128,23 @@ fun ReaderScreen(
 
     // Font size steps: 16, 18, 20, 23
     val fontSizes = listOf(16.sp, 18.sp, 20.sp, 23.sp)
-    var fontSizeIndex by remember { mutableIntStateOf(1) }
+    val currentFontSizeIndex = settings.textSizeIndex.coerceIn(0, fontSizes.size - 1)
+    val currentFontSize = fontSizes[currentFontSizeIndex]
     var isAaPanelOpen by remember { mutableStateOf(false) }
+
+    // Title entrance animation (titleUp from translateY(40px), 500ms ease-out, delay 120ms)
+    val titleOffsetY = remember { Animatable(40f) }
+    val titleAlpha = remember { Animatable(0f) }
+
+    LaunchedEffect(articleId) {
+        titleOffsetY.animateTo(0f, SignalMotion.easeTween(SignalMotion.SharedElementDuration, delayMillis = 120))
+    }
+    LaunchedEffect(articleId) {
+        titleAlpha.animateTo(1f, SignalMotion.easeTween(SignalMotion.SharedElementDuration, delayMillis = 120))
+    }
+
+    // Bookmark pop animation on save (.rf .bump svg { animation: pop .45s var(--spring) })
+    val bookmarkPop = remember { Animatable(1.0f) }
 
     val currentArticle = article ?: return
 
@@ -135,7 +166,7 @@ fun ReaderScreen(
             .background(colors.bg)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Top reading-progress bar (sticky 2px ink line)
+            // Top reading-progress bar (sticky 2px ink line at header bottom: #prog)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -162,7 +193,7 @@ fun ReaderScreen(
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // Square 1:1 image or flat card with Category Tag pill
+                // Square 1:1 image with 26dp radius and Category Tag pill (.r-pic .tag)
                 item {
                     Box(
                         modifier = Modifier
@@ -180,7 +211,7 @@ fun ReaderScreen(
                             )
                         }
 
-                        // Category tag pill
+                        // Category tag pill (.tag)
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
@@ -199,17 +230,20 @@ fun ReaderScreen(
                     }
                 }
 
-                // Title
+                // Title with titleUp entrance animation (#rtitle)
                 item {
                     Text(
                         text = currentArticle.title.uppercase(),
                         style = SignalTheme.typography.readerTitle,
                         color = colors.ink,
-                        modifier = Modifier.padding(top = 22.dp, bottom = 22.dp)
+                        modifier = Modifier
+                            .padding(top = 22.dp, bottom = 22.dp)
+                            .offset { IntOffset(0, (titleOffsetY.value * density).roundToInt()) }
+                            .alpha(titleAlpha.value)
                     )
                 }
 
-                // Facts DL block
+                // Facts DL block (#rdl) with staggered entrance
                 item {
                     FactsBlock(
                         article = currentArticle,
@@ -217,12 +251,12 @@ fun ReaderScreen(
                     )
                 }
 
-                // Body content
+                // Body content (#rtext)
                 item {
                     Spacer(modifier = Modifier.height(26.dp))
                     ArticleBody(
                         article = currentArticle,
-                        fontSize = fontSizes[fontSizeIndex],
+                        fontSize = currentFontSize,
                         onReadFullClick = { openInCustomTabs(currentArticle.url) }
                     )
                 }
@@ -232,41 +266,85 @@ fun ReaderScreen(
                 }
             }
 
-            // Aa Settings Sheet
+            // Aa Settings Sheet (.sheet)
             AnimatedVisibility(
                 visible = isAaPanelOpen,
-                enter = slideInVertically(initialOffsetY = { it })
+                enter = slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = SignalMotion.easeTween(300)
+                ),
+                exit = slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = SignalMotion.easeTween(250)
+                )
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(colors.bg)
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Text size",
-                        color = colors.mute,
-                        fontSize = 13.sp
-                    )
+                Column(modifier = Modifier.fillMaxWidth().background(colors.bg)) {
+                    HorizontalDivider(color = colors.line, thickness = 1.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Text size",
+                            color = colors.mute,
+                            fontSize = 13.sp
+                        )
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        PillButton(
-                            text = "A−",
-                            enabled = fontSizeIndex > 0,
-                            onClick = { if (fontSizeIndex > 0) fontSizeIndex-- }
-                        )
-                        PillButton(
-                            text = "A+",
-                            enabled = fontSizeIndex < fontSizes.size - 1,
-                            onClick = { if (fontSizeIndex < fontSizes.size - 1) fontSizeIndex++ }
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            PillButton(
+                                text = "A−",
+                                enabled = currentFontSizeIndex > 0,
+                                onClick = {
+                                    haptics.tick()
+                                    if (currentFontSizeIndex > 0) {
+                                        settingsManager.updateTextSizeIndex(currentFontSizeIndex - 1)
+                                    }
+                                }
+                            )
+                            PillButton(
+                                text = "A+",
+                                enabled = currentFontSizeIndex < fontSizes.size - 1,
+                                onClick = {
+                                    haptics.tick()
+                                    if (currentFontSizeIndex < fontSizes.size - 1) {
+                                        settingsManager.updateTextSizeIndex(currentFontSizeIndex + 1)
+                                    }
+                                }
+                            )
+
+                            // Theme toggle button matching mockup (#theme)
+                            val isDarkTheme = settings.theme == "dark"
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (isDarkTheme) colors.ink else colors.bg)
+                                    .border(1.dp, colors.ink, CircleShape)
+                                    .signalPressScale(0.96f) {
+                                        haptics.tick()
+                                        settingsManager.updateTheme(if (isDarkTheme) "light" else "dark")
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (isDarkTheme) "Light" else "Dark",
+                                    color = if (isDarkTheme) colors.bg else colors.ink,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            // Bottom action bar: Save | Aa | Open site ↗
+            // Bottom action bar (.rf): Save | Aa | Open site ↗
             HorizontalDivider(color = colors.line, thickness = 1.dp)
             Row(
                 modifier = Modifier
@@ -275,16 +353,19 @@ fun ReaderScreen(
                     .navigationBarsPadding()
                     .height(56.dp)
             ) {
-                // Save button
+                // Save button with pop bounce animation
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
+                        .signalPressScale(0.96f) {
                             coroutineScope.launch {
+                                val willBeSaved = !currentArticle.saved
                                 repository.toggleSaved(currentArticle.id)
+                                if (willBeSaved) {
+                                    haptics.tick()
+                                    bookmarkPop.snapTo(0.6f)
+                                    bookmarkPop.animateTo(1.0f, SignalMotion.PopSpringSpec)
+                                }
                             }
                         },
                     contentAlignment = Alignment.Center
@@ -296,10 +377,12 @@ fun ReaderScreen(
                         BookmarkIcon(
                             isFilled = currentArticle.saved,
                             color = if (currentArticle.saved) colors.ink else colors.mute,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier
+                                .size(16.dp)
+                                .scale(bookmarkPop.value)
                         )
                         Text(
-                            text = "Save",
+                            text = if (currentArticle.saved) "Saved" else "Save",
                             color = if (currentArticle.saved) colors.ink else colors.mute,
                             fontWeight = if (currentArticle.saved) FontWeight.Medium else FontWeight.Normal,
                             fontSize = 13.sp
@@ -311,10 +394,10 @@ fun ReaderScreen(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { isAaPanelOpen = !isAaPanelOpen },
+                        .signalPressScale(0.96f) {
+                            haptics.tick()
+                            isAaPanelOpen = !isAaPanelOpen
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -329,10 +412,9 @@ fun ReaderScreen(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { openInCustomTabs(currentArticle.url) },
+                        .signalPressScale(0.96f) {
+                            openInCustomTabs(currentArticle.url)
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -347,14 +429,14 @@ fun ReaderScreen(
         // Back Chevron Header (hides on scroll down, returns on scroll up)
         val headerOffsetY by animateFloatAsState(
             targetValue = if (isHeaderVisible) 0f else -100f,
-            animationSpec = tween(280),
+            animationSpec = SignalMotion.easeTween(280),
             label = "headerScroll"
         )
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .offset { IntOffset(0, headerOffsetY.roundToInt()) }
+                .offset { IntOffset(0, (headerOffsetY * density).roundToInt()) }
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -364,13 +446,9 @@ fun ReaderScreen(
                     .size(32.dp)
                     .clip(CircleShape)
                     .background(colors.bg.copy(alpha = 0.9f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onBack() },
+                    .signalPressScale(0.96f) { onBack() },
                 contentAlignment = Alignment.Center
             ) {
-                // Back chevron (<)
                 BackChevron(color = colors.ink)
             }
         }
@@ -435,7 +513,8 @@ private fun FactRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.Start
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
@@ -472,7 +551,6 @@ private fun ArticleBody(
     }
 
     if (article.isExcerptOnly) {
-        // Excerpt-only state: first two paragraphs + 110px fade + CTA
         val excerptParagraphs = paragraphs.take(2)
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -486,7 +564,7 @@ private fun ArticleBody(
                 }
             }
 
-            // 110px gradient fade to background
+            // 110px gradient fade to background (#body.cut::after)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -500,7 +578,7 @@ private fun ArticleBody(
             )
         }
 
-        // CTA: Read full article ↗
+        // CTA: Read full article ↗ (#cta)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -511,7 +589,7 @@ private fun ArticleBody(
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(colors.ink)
-                    .clickable { onReadFullClick() }
+                    .signalPressScale(0.96f) { onReadFullClick() }
                     .padding(horizontal = 26.dp, vertical = 16.dp)
             ) {
                 Row(
@@ -567,7 +645,8 @@ private fun PillButton(
         modifier = Modifier
             .clip(CircleShape)
             .background(if (enabled) colors.bg else colors.bg.copy(alpha = 0.3f))
-            .clickable(enabled = enabled) { onClick() }
+            .border(1.dp, if (enabled) colors.ink else colors.line, CircleShape)
+            .signalPressScale(0.96f) { onClick() }
             .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
