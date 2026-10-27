@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -88,9 +89,12 @@ fun SignalAppNav(
         else -> SignalTab.HOME
     }
 
+    val colors = SignalTheme.colors
     val startDestination = if (isFirstLaunch) "first_launch" else "home"
 
     Scaffold(
+        containerColor = colors.bg,
+        contentColor = colors.ink,
         bottomBar = {
             AnimatedVisibility(
                 visible = isBottomBarVisible,
@@ -120,14 +124,21 @@ fun SignalAppNav(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(colors.bg)
                 .padding(innerPadding)
         ) {
             @OptIn(ExperimentalSharedTransitionApi::class)
-            SharedTransitionLayout {
+            SharedTransitionLayout(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(colors.bg)
+            ) {
                 NavHost(
                     navController = navController,
                     startDestination = startDestination,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(colors.bg),
                     enterTransition = {
                         fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration)) +
                         slideInVertically(
@@ -174,7 +185,27 @@ fun SignalAppNav(
                     }
 
                     // Home Screen
-                    composable("home") {
+                    composable(
+                        route = "home",
+                        exitTransition = {
+                            if (targetState.destination.route?.startsWith("reader") == true) {
+                                fadeOut(tween(durationMillis = 200, delayMillis = 100))
+                            } else {
+                                fadeOut(SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)) +
+                                slideOutVertically(
+                                    targetOffsetY = { 30 },
+                                    animationSpec = SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)
+                                )
+                            }
+                        },
+                        popEnterTransition = {
+                            if (initialState.destination.route?.startsWith("reader") == true) {
+                                fadeIn(SignalMotion.easeTween(250))
+                            } else {
+                                fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration))
+                            }
+                        }
+                    ) {
                         HomeScreen(
                             repository = app.repository,
                             isCompactLayout = isCompactLayout,
@@ -196,7 +227,27 @@ fun SignalAppNav(
                     }
 
                     // Saved Screen
-                    composable("saved") {
+                    composable(
+                        route = "saved",
+                        exitTransition = {
+                            if (targetState.destination.route?.startsWith("reader") == true) {
+                                fadeOut(tween(durationMillis = 200, delayMillis = 100))
+                            } else {
+                                fadeOut(SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)) +
+                                slideOutVertically(
+                                    targetOffsetY = { 30 },
+                                    animationSpec = SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)
+                                )
+                            }
+                        },
+                        popEnterTransition = {
+                            if (initialState.destination.route?.startsWith("reader") == true) {
+                                fadeIn(SignalMotion.easeTween(250))
+                            } else {
+                                fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration))
+                            }
+                        }
+                    ) {
                         SavedScreen(
                             repository = app.repository,
                             onArticleClick = { articleId ->
@@ -221,7 +272,25 @@ fun SignalAppNav(
                     // Source Page Screen
                     composable(
                         route = "source_page/{sourceId}",
-                        arguments = listOf(navArgument("sourceId") { type = NavType.LongType })
+                        arguments = listOf(navArgument("sourceId") { type = NavType.LongType }),
+                        exitTransition = {
+                            if (targetState.destination.route?.startsWith("reader") == true) {
+                                fadeOut(tween(durationMillis = 200, delayMillis = 100))
+                            } else {
+                                fadeOut(SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)) +
+                                slideOutVertically(
+                                    targetOffsetY = { 30 },
+                                    animationSpec = SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)
+                                )
+                            }
+                        },
+                        popEnterTransition = {
+                            if (initialState.destination.route?.startsWith("reader") == true) {
+                                fadeIn(SignalMotion.easeTween(250))
+                            } else {
+                                fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration))
+                            }
+                        }
                     ) { backStackEntry ->
                         val sourceId = backStackEntry.arguments?.getLong("sourceId") ?: return@composable
                         SourcePageScreen(
@@ -292,7 +361,27 @@ fun SignalAppNav(
                     }
 
                     // Search Screen
-                    composable("search") {
+                    composable(
+                        route = "search",
+                        exitTransition = {
+                            if (targetState.destination.route?.startsWith("reader") == true) {
+                                fadeOut(tween(durationMillis = 200, delayMillis = 100))
+                            } else {
+                                fadeOut(SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)) +
+                                slideOutVertically(
+                                    targetOffsetY = { 30 },
+                                    animationSpec = SignalMotion.easeTween(SignalMotion.FeedSwapOutDuration)
+                                )
+                            }
+                        },
+                        popEnterTransition = {
+                            if (initialState.destination.route?.startsWith("reader") == true) {
+                                fadeIn(SignalMotion.easeTween(250))
+                            } else {
+                                fadeIn(SignalMotion.easeTween(SignalMotion.ContentEnterDuration))
+                            }
+                        }
+                    ) {
                         SearchScreen(
                             repository = app.repository,
                             settingsManager = app.settingsManager,

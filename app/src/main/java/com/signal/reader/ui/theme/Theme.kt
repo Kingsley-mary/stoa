@@ -4,6 +4,8 @@ import android.app.Activity
 import android.provider.Settings
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
@@ -53,6 +55,7 @@ fun SignalTheme(
             val window = (view.context as? Activity)?.window ?: return@SideEffect
             window.statusBarColor = colors.bg.toArgb()
             window.navigationBarColor = colors.bg.toArgb()
+            window.decorView.setBackgroundColor(colors.bg.toArgb())
             val insetsController = WindowCompat.getInsetsController(window, view)
             insetsController.isAppearanceLightStatusBars = !isDark
             insetsController.isAppearanceLightNavigationBars = !isDark
@@ -67,11 +70,28 @@ fun SignalTheme(
     }
     val isReducedMotion = animatorScale == 0.0f
 
+    val materialColorScheme = if (isDark) {
+        darkColorScheme(
+            background = colors.bg,
+            surface = colors.bg,
+            onBackground = colors.ink,
+            onSurface = colors.ink
+        )
+    } else {
+        lightColorScheme(
+            background = colors.bg,
+            surface = colors.bg,
+            onBackground = colors.ink,
+            onSurface = colors.ink
+        )
+    }
+
     CompositionLocalProvider(
         LocalSignalColors provides colors,
         LocalReducedMotion provides isReducedMotion
     ) {
         MaterialTheme(
+            colorScheme = materialColorScheme,
             content = content
         )
     }
