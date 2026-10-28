@@ -1,11 +1,15 @@
 package com.signal.reader.ui.reader
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.os.Build
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.jsoup.Jsoup
 import java.util.Locale
 
 enum class AudioPlaybackStatus {
@@ -33,8 +37,51 @@ class ArticleAudioPlayer(context: Context) {
     init {
         tts = TextToSpeech(context.applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.getDefault()
                 isInitialized = true
+                val defaultLocale = Locale.getDefault()
+                tts?.language = defaultLocale
+
+                // Configure high-quality audio attributes
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+                tts?.setAudioAttributes(audioAttributes)
+
+                // Select the highest quality natural voice available
+                try {
+                    val allVoices = tts?.voices ?: emptySet()
+                    val langVoices = allVoices.filter { voice ->
+                        voice.locale.language.equals(defaultLocale.language, ignoreCase = true) ||
+                        voice.locale.language.equals("en", ignoreCase = true)
+                    }
+
+                    // Score voices prioritizing high quality, natural/neural voices
+                    val bestVoice = langVoices.maxByOrNull { voice ->
+                        var score = 0
+                        if (voice.locale.language.equals(defaultLocale.language, ignoreCase = true)) score += 40
+                        if (voice.locale.country.equals(defaultLocale.country, ignoreCase = true)) score += 20
+                        
+                        if (voice.quality == Voice.QUALITY_VERY_HIGH) score += 100
+                        else if (voice.quality == Voice.QUALITY_HIGH) score += 60
+                        else if (voice.quality == Voice.QUALITY_NORMAL) score += 20
+
+                        if (voice.latency == Voice.LATENCY_VERY_LOW) score += 20
+                        if (!voice.isNetworkConnectionRequired) score += 15
+
+                        val name = voice.name.lowercase()
+                        if (name.contains("natural") || name.contains("neural") || name.contains("wavenet")) score += 80
+                        if (name.contains("enhanced") || name.contains("premium")) score += 40
+                        score
+                    }
+
+                    if (bestVoice != null) {
+                        tts?.voice = bestVoice
+                    }
+                } catch (_: Exception) {}
+
+                tts?.setPitch(1.0f)
+
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {
                         _playbackState.value = _playbackState.value.copy(
@@ -66,13 +113,34 @@ class ArticleAudioPlayer(context: Context) {
     fun play(title: String, bodyText: String) {
         if (!isInitialized || tts == null) return
 
-        // Chunk text into sentences/paragraphs
-        val fullText = "$title. $bodyText"
-        articleTextQueue = fullText.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
+        // Clean HTML tags and decode entities for natural speech
+        val cleanTitle = cleanHtmlForSpeech(title)
+        val cleanBody = cleanHtmlForSpeech(bodyText)
+
+        // Chunk text into natural sentences (splitting on sentence terminators)
+        val fullText = "$cleanTitle. $cleanBody"
+        articleTextQueue = fullText
+            .split(Regex("(?<=[.!?])\\s+|\n+"))
+            .map { it.trim() }
+            .filter { it.length > 2 }
+
         currentChunkIndex = 0
 
         tts?.setSpeechRate(_playbackState.value.speed)
         speakCurrentChunk()
+    }
+
+    private fun cleanHtmlForSpeech(html: String): String {
+        return try {
+            val doc = Jsoup.parse(html)
+            doc.select("script, style, noscript, nav, footer, header").remove()
+            doc.text()
+                .replace(Regex("&[a-zA-Z0-9#]+;"), " ")
+                .replace(Regex("https?://\\S+"), "link")
+                .trim()
+        } catch (_: Exception) {
+            html.replace(Regex("<[^>]*>"), " ").trim()
+        }
     }
 
     private fun speakCurrentChunk() {

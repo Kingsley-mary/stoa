@@ -273,9 +273,46 @@ fun SettingsScreen(
                 }
             }
 
-            // Refresh Section
+            // Widget Section
             item {
                 StaggeredItem(index = 3) {
+                    Column {
+                        SettingsSectionHeader("Widget")
+
+                        SettingsRow(
+                            label = "Background",
+                            sublabel = "Home screen 4×2 hero widget"
+                        ) {
+                            SlidingSegmentedControl(
+                                options = listOf("Paper", "White", "Dark", "Auto", "Image"),
+                                selectedIndex = when (settings.widgetBackground) {
+                                    "light" -> 1
+                                    "dark" -> 2
+                                    "system" -> 3
+                                    "article_image" -> 4
+                                    else -> 0
+                                },
+                                onSelect = { idx ->
+                                    haptics.tick()
+                                    val newBg = when (idx) {
+                                        1 -> "light"
+                                        2 -> "dark"
+                                        3 -> "system"
+                                        4 -> "article_image"
+                                        else -> "paper"
+                                    }
+                                    settingsManager.updateWidgetBackground(newBg)
+                                    com.signal.reader.widget.StoaWidgetProvider.updateAllWidgets(context)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Refresh Section
+            item {
+                StaggeredItem(index = 4) {
                     Column {
                         SettingsSectionHeader("Refresh")
 

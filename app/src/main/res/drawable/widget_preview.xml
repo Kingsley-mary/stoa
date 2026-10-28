@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="260dp"
+    android:height="130dp"
+    android:viewportWidth="260"
+    android:viewportHeight="130">
+    <!-- Background card -->
+    <path
+        android:fillColor="#EEEAE1"
+        android:strokeColor="#29141413"
+        android:strokeWidth="1.5"
+        android:pathData="M 18,0 L 242,0 A 18,18 0 0,1 260,18 L 260,112 A 18,18 0 0,1 242,130 L 18,130 A 18,18 0 0,1 0,112 L 0,18 A 18,18 0 0,1 18,0 Z" />
+    <!-- Unread badge pill -->
+    <path
+        android:fillColor="#141413"
+        android:pathData="M 195,16 L 240,16 A 8,8 0 0,1 248,24 L 248,24 A 8,8 0 0,1 240,32 L 195,32 A 8,8 0 0,1 187,24 L 187,24 A 8,8 0 0,1 195,16 Z" />
+    <!-- STOA wordmark line -->
+    <path
+        android:fillColor="#141413"
+        android:pathData="M 20,20 L 70,20 L 70,26 L 20,26 Z" />
+    <!-- Headline lines -->
+    <path
+        android:fillColor="#141413"
+        android:pathData="M 20,48 L 240,48 L 240,58 L 20,58 Z" />
+    <path
+        android:fillColor="#141413"
+        android:pathData="M 20,64 L 210,64 L 210,74 L 20,74 Z" />
+    <!-- Meta line -->
+    <path
+        android:fillColor="#6B665C"
+        android:pathData="M 20,98 L 120,98 L 120,106 L 20,106 Z" />
+</vector>

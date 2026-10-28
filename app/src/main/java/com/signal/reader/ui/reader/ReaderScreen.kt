@@ -44,6 +44,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -95,7 +96,12 @@ import com.signal.reader.ui.components.BackChevron
 import com.signal.reader.ui.components.BookmarkIcon
 import com.signal.reader.ui.components.ImageViewerDialog
 import com.signal.reader.ui.components.MoonIcon
+import com.signal.reader.ui.components.PauseIcon
+import com.signal.reader.ui.components.PlayIcon
 import com.signal.reader.ui.components.QuoteCardGenerator
+import com.signal.reader.ui.components.ShareIcon
+import com.signal.reader.ui.components.ShareStorySheet
+import com.signal.reader.ui.components.SpeakerIcon
 import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.SunIcon
 import com.signal.reader.ui.components.TimeUtils
@@ -219,6 +225,7 @@ fun ReaderScreen(
 
     var extractedHtml by remember { mutableStateOf<String?>(null) }
     var isExtracting by remember { mutableStateOf(false) }
+    var showShareSheet by remember { mutableStateOf(false) }
 
     val audioPlayer = remember { ArticleAudioPlayer(context) }
     val audioState by audioPlayer.playbackState.collectAsState()
@@ -232,6 +239,10 @@ fun ReaderScreen(
     val blocks = remember(currentArticle.fullContent, currentArticle.excerpt, extractedHtml, currentArticle.imageUrl) {
         val raw = extractedHtml ?: currentArticle.fullContent ?: currentArticle.excerpt
         parseContentBlocks(raw, heroImageUrl = currentArticle.imageUrl)
+    }
+
+    val paragraphTexts = remember(blocks) {
+        blocks.filterIsInstance<ContentBlock.Paragraph>().map { it.text }
     }
 
     val isExcerpt = remember(currentArticle.isExcerptOnly, currentArticle.fullContent, currentArticle.excerpt, extractedHtml) {
@@ -322,43 +333,41 @@ fun ReaderScreen(
                                     .background(if (isAudioActive) colors.accent else Color.Transparent)
                                     .signalPressScale(0.92f) {
                                         haptics.tick()
+                                        val textToSpeak = if (!extractedHtml.isNullOrBlank()) {
+                                            extractedHtml!!
+                                        } else if (!currentArticle.fullContent.isNullOrBlank()) {
+                                            currentArticle.fullContent!!
+                                        } else {
+                                            currentArticle.excerpt.ifBlank { currentArticle.title }
+                                        }
                                         audioPlayer.togglePlayPause(
                                             currentArticle.title,
-                                            currentArticle.excerpt.ifBlank { currentArticle.title }
+                                            textToSpeak
                                         )
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = if (audioState.status == AudioPlaybackStatus.PLAYING) "⏸" else "🔊",
+                                SpeakerIcon(
                                     color = if (isAudioActive) Color.White else colors.ink,
-                                    fontSize = 15.sp
+                                    isPlaying = audioState.status == AudioPlaybackStatus.PLAYING,
+                                    modifier = Modifier.size(17.dp)
                                 )
                             }
 
-                            // Share Quote Card button
+                            // Share button
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
                                     .signalPressScale(0.92f) {
                                         haptics.tick()
-                                        QuoteCardGenerator.generateAndShare(
-                                            context = context,
-                                            quote = currentArticle.excerpt.ifBlank { currentArticle.title },
-                                            sourceName = currentArticle.sourceName,
-                                            articleTitle = currentArticle.title,
-                                            author = currentArticle.author,
-                                            isDark = colors.bg == com.signal.reader.ui.theme.DarkBg
-                                        )
+                                        showShareSheet = true
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "“",
+                                ShareIcon(
                                     color = colors.ink,
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.ExtraBold
+                                    modifier = Modifier.size(17.dp)
                                 )
                             }
                         }
@@ -445,7 +454,7 @@ fun ReaderScreen(
                 item(key = "title") {
                     Text(
                         text = currentArticle.title.uppercase(),
-                        style = SignalTheme.typography.readerTitle(isSerif),
+                        style = SignalTheme.typography.readerTitle,
                         color = colors.ink,
                         modifier = Modifier
                             .padding(top = 22.dp, bottom = 22.dp)
@@ -470,18 +479,20 @@ fun ReaderScreen(
                 val blocksToRender = if (isExcerpt) blocks.take(3) else blocks
                 itemsIndexed(blocksToRender, key = { idx, _ -> "content_block_$idx" }) { idx, block ->
                     Box(modifier = Modifier.fillMaxWidth()) {
-                        RenderContentBlock(
-                            block = block,
-                            fontSize = currentFontSize,
-                            isSerif = isSerif,
-                            onImageClick = { url, _ ->
-                                val clickedIdx = allArticleImages.indexOfFirst { it.url == url }.takeIf { it >= 0 } ?: 0
-                                activeGalleryIndex = clickedIdx
-                            },
-                            onLinkClick = { url ->
-                                openWeb(url, null)
-                            }
-                        )
+                        SelectionContainer {
+                            RenderContentBlock(
+                                block = block,
+                                fontSize = currentFontSize,
+                                isSerif = isSerif,
+                                onImageClick = { url, _ ->
+                                    val clickedIdx = allArticleImages.indexOfFirst { it.url == url }.takeIf { it >= 0 } ?: 0
+                                    activeGalleryIndex = clickedIdx
+                                },
+                                onLinkClick = { url ->
+                                    openWeb(url, null)
+                                }
+                            )
+                        }
 
                         // 110dp smooth gradient overlay directly fading the end of excerpt text
                         if (isExcerpt && idx == blocksToRender.lastIndex) {
@@ -577,7 +588,7 @@ fun ReaderScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -611,8 +622,30 @@ fun ReaderScreen(
                                     }
                                 }
                             )
+                        }
+                    }
 
-                            // Theme toggle button matching mockup (#theme)
+                    HorizontalDivider(color = colors.line.copy(alpha = 0.5f), thickness = 1.dp)
+
+                    // Display & Font Row: single button for Theme, and single button for Typeface
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Display & Font",
+                            color = colors.mute,
+                            fontSize = 13.sp
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 1. Single Theme Switcher Button
                             val isSystemDark = isSystemInDarkTheme()
                             val isDarkActive = when (settings.theme) {
                                 "dark" -> true
@@ -623,12 +656,12 @@ fun ReaderScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .border(1.dp, colors.ink, CircleShape)
+                                    .border(1.dp, colors.ink.copy(alpha = 0.7f), CircleShape)
                                     .signalPressScale(0.96f) {
                                         haptics.tick()
                                         settingsManager.updateTheme(if (isDarkActive) "light" else "dark")
                                     }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    .padding(horizontal = 14.dp, vertical = 7.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(
@@ -636,17 +669,17 @@ fun ReaderScreen(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     if (isDarkActive) {
-                                        SunIcon(color = colors.ink, modifier = Modifier.size(14.dp))
+                                        MoonIcon(color = colors.ink, modifier = Modifier.size(13.dp))
                                         Text(
-                                            text = "Light",
+                                            text = "Dark",
                                             color = colors.ink,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Medium
                                         )
                                     } else {
-                                        MoonIcon(color = colors.ink, modifier = Modifier.size(14.dp))
+                                        SunIcon(color = colors.ink, modifier = Modifier.size(13.dp))
                                         Text(
-                                            text = "Dark",
+                                            text = "Light",
                                             color = colors.ink,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Medium
@@ -654,68 +687,36 @@ fun ReaderScreen(
                                     }
                                 }
                             }
-                        }
-                    }
 
-                    HorizontalDivider(color = colors.line.copy(alpha = 0.5f), thickness = 1.dp)
-
-                    // Typeface switcher row: Sans vs Serif
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Typeface",
-                            color = colors.mute,
-                            fontSize = 13.sp
-                        )
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                            // 2. Single Typeface Switcher Button (switches between Sans and Serif)
                             Box(
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .background(if (!isSerif) colors.ink else Color.Transparent)
-                                    .border(1.dp, colors.ink, CircleShape)
+                                    .border(1.dp, colors.ink.copy(alpha = 0.7f), CircleShape)
                                     .signalPressScale(0.96f) {
                                         haptics.tick()
-                                        settingsManager.updateFontFamily("sans")
+                                        settingsManager.updateFontFamily(if (isSerif) "sans" else "serif")
                                     }
-                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                                    .padding(horizontal = 14.dp, vertical = 7.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "Sans",
-                                    color = if (!isSerif) colors.bg else colors.ink,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(if (isSerif) colors.ink else Color.Transparent)
-                                    .border(1.dp, colors.ink, CircleShape)
-                                    .signalPressScale(0.96f) {
-                                        haptics.tick()
-                                        settingsManager.updateFontFamily("serif")
-                                    }
-                                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Serif",
-                                    color = if (isSerif) colors.bg else colors.ink,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    fontFamily = FontFamily.Serif
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = if (isSerif) "Aa Serif" else "Aa Sans",
+                                        color = colors.ink,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        fontFamily = if (isSerif) FontFamily.Serif else SignalTheme.typography.screenTitle.fontFamily
+                                    )
+                                    Text(
+                                        text = "⟲",
+                                        color = colors.mute,
+                                        fontSize = 11.sp
+                                    )
+                                }
                             }
                         }
                     }
@@ -842,18 +843,25 @@ fun ReaderScreen(
                                 .background(colors.accent)
                                 .signalPressScale(0.92f) {
                                     haptics.tick()
+                                    val textToSpeak = if (!extractedHtml.isNullOrBlank()) {
+                                        extractedHtml!!
+                                    } else if (!currentArticle.fullContent.isNullOrBlank()) {
+                                        currentArticle.fullContent!!
+                                    } else {
+                                        currentArticle.excerpt.ifBlank { currentArticle.title }
+                                    }
                                     audioPlayer.togglePlayPause(
                                         currentArticle.title,
-                                        currentArticle.excerpt.ifBlank { currentArticle.title }
+                                        textToSpeak
                                     )
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = if (audioState.status == AudioPlaybackStatus.PLAYING) "⏸" else "▶",
-                                color = Color.White,
-                                fontSize = 13.sp
-                            )
+                            if (audioState.status == AudioPlaybackStatus.PLAYING) {
+                                PauseIcon(color = Color.White, modifier = Modifier.size(13.dp))
+                            } else {
+                                PlayIcon(color = Color.White, modifier = Modifier.size(13.dp))
+                            }
                         }
 
                         Text(
@@ -917,6 +925,15 @@ fun ReaderScreen(
                 images = allArticleImages,
                 initialIndex = initialIndex,
                 onDismiss = { activeGalleryIndex = null }
+            )
+        }
+
+        // Share Story Sheet (with link sharing & quote card generator)
+        if (showShareSheet) {
+            ShareStorySheet(
+                article = currentArticle,
+                paragraphs = paragraphTexts,
+                onDismiss = { showShareSheet = false }
             )
         }
     }

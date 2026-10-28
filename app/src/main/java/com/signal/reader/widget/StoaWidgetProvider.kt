@@ -6,7 +6,14 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.drawable.BitmapDrawable
+import android.view.View
 import android.widget.RemoteViews
+import coil.Coil
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import com.signal.reader.MainActivity
 import com.signal.reader.R
 import com.signal.reader.SignalApplication
@@ -41,10 +48,20 @@ class StoaWidgetProvider : AppWidgetProvider() {
 
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val db = SignalApplication.instance.database
+                    val app = SignalApplication.instance
+                    val db = app.database
+                    val settings = app.settingsManager.settingsFlow.value
                     val articles = db.articleDao().getHomeStreamFlow().firstOrNull() ?: emptyList()
                     val unreadCount = articles.count { !it.read }
                     val heroArticle = articles.firstOrNull { !it.read } ?: articles.firstOrNull()
+
+                    val widgetBg = settings.widgetBackground
+
+                    val isSystemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+                    val effectiveBg = when (widgetBg) {
+                        "system" -> if (isSystemDark) "dark" else "light"
+                        else -> widgetBg
+                    }
 
                     for (widgetId in ids) {
                         val views = RemoteViews(context.packageName, R.layout.widget_stoa_hero)
@@ -62,7 +79,80 @@ class StoaWidgetProvider : AppWidgetProvider() {
                         val badgeText = if (unreadCount > 0) "$unreadCount unread" else "All read"
                         views.setTextViewText(R.id.widget_unread_badge, badgeText)
 
-                        // Tap opens MainActivity
+                        // Apply background styling & high-contrast themes
+                        when (effectiveBg) {
+                            "light" -> {
+                                views.setViewVisibility(R.id.widget_bg_image, View.GONE)
+                                views.setViewVisibility(R.id.widget_scrim, View.GONE)
+                                views.setInt(R.id.widget_container, "setBackgroundResource", R.drawable.widget_bg_white)
+                                views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
+                                views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
+                                views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
+                                views.setInt(R.id.widget_unread_badge, "setBackgroundResource", R.drawable.widget_badge_bg)
+                                views.setTextColor(R.id.widget_unread_badge, Color.parseColor("#FFFFFF"))
+                            }
+                            "dark" -> {
+                                views.setViewVisibility(R.id.widget_bg_image, View.GONE)
+                                views.setViewVisibility(R.id.widget_scrim, View.GONE)
+                                views.setInt(R.id.widget_container, "setBackgroundResource", R.drawable.widget_bg_black)
+                                views.setTextColor(R.id.widget_brand, Color.parseColor("#F1EDE4"))
+                                views.setTextColor(R.id.widget_title, Color.parseColor("#F1EDE4"))
+                                views.setTextColor(R.id.widget_meta, Color.parseColor("#9C978B"))
+                                views.setInt(R.id.widget_unread_badge, "setBackgroundResource", R.drawable.widget_badge_bg_accent)
+                                views.setTextColor(R.id.widget_unread_badge, Color.parseColor("#FFFFFF"))
+                            }
+                            "article_image" -> {
+                                var loadedImage = false
+                                if (!heroArticle?.imageUrl.isNullOrBlank()) {
+                                    try {
+                                        val req = ImageRequest.Builder(context)
+                                            .data(heroArticle!!.imageUrl)
+                                            .size(800, 450)
+                                            .allowHardware(false)
+                                            .build()
+                                        val result = (Coil.imageLoader(context).execute(req) as? SuccessResult)?.drawable
+                                        val bitmap = (result as? BitmapDrawable)?.bitmap
+                                        if (bitmap != null) {
+                                            views.setImageViewBitmap(R.id.widget_bg_image, bitmap)
+                                            views.setViewVisibility(R.id.widget_bg_image, View.VISIBLE)
+                                            views.setViewVisibility(R.id.widget_scrim, View.VISIBLE)
+                                            views.setInt(R.id.widget_container, "setBackgroundResource", R.drawable.widget_bg_black)
+                                            views.setTextColor(R.id.widget_brand, Color.parseColor("#FFFFFF"))
+                                            views.setTextColor(R.id.widget_title, Color.parseColor("#FFFFFF"))
+                                            views.setTextColor(R.id.widget_meta, Color.parseColor("#E0DDD5"))
+                                            views.setInt(R.id.widget_unread_badge, "setBackgroundResource", R.drawable.widget_badge_bg_accent)
+                                            views.setTextColor(R.id.widget_unread_badge, Color.parseColor("#FFFFFF"))
+                                            loadedImage = true
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+
+                                if (!loadedImage) {
+                                    // Fallback to warm paper
+                                    views.setViewVisibility(R.id.widget_bg_image, View.GONE)
+                                    views.setViewVisibility(R.id.widget_scrim, View.GONE)
+                                    views.setInt(R.id.widget_container, "setBackgroundResource", R.drawable.widget_bg_paper)
+                                    views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
+                                    views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
+                                    views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
+                                    views.setInt(R.id.widget_unread_badge, "setBackgroundResource", R.drawable.widget_badge_bg)
+                                    views.setTextColor(R.id.widget_unread_badge, Color.parseColor("#EEEAE1"))
+                                }
+                            }
+                            else -> {
+                                // Default: "paper"
+                                views.setViewVisibility(R.id.widget_bg_image, View.GONE)
+                                views.setViewVisibility(R.id.widget_scrim, View.GONE)
+                                views.setInt(R.id.widget_container, "setBackgroundResource", R.drawable.widget_bg_paper)
+                                views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
+                                views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
+                                views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
+                                views.setInt(R.id.widget_unread_badge, "setBackgroundResource", R.drawable.widget_badge_bg)
+                                views.setTextColor(R.id.widget_unread_badge, Color.parseColor("#EEEAE1"))
+                            }
+                        }
+
+                        // Tap opens MainActivity with article_id
                         val intent = Intent(context, MainActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                             if (heroArticle != null) {

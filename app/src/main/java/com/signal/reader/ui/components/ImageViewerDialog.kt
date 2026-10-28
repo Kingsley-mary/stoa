@@ -6,8 +6,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,6 +80,10 @@ fun ImageViewerDialog(
 
     var showControls by remember { mutableStateOf(true) }
     var isZoomedIn by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pagerState.currentPage) {
+        isZoomedIn = false
+    }
 
     BackHandler { onDismiss() }
 
@@ -242,8 +248,8 @@ private fun ZoomableImageItem(
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
 
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    var scale by remember(image.url) { mutableFloatStateOf(1f) }
+    var offset by remember(image.url) { mutableStateOf(Offset.Zero) }
 
     LaunchedEffect(scale) {
         onZoomChanged(scale > 1.05f)
@@ -252,7 +258,7 @@ private fun ZoomableImageItem(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
+            .pointerInput(image.url) {
                 detectTapGestures(
                     onDoubleTap = { tapOffset ->
                         haptics.tick()
@@ -279,21 +285,37 @@ private fun ZoomableImageItem(
                     }
                 )
             }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(1f, 5f)
-                    scale = newScale
+            .pointerInput(image.url) {
+                awaitEachGesture {
+                    do {
+                        val event = awaitPointerEvent()
+                        val canceled = event.changes.any { it.isConsumed }
+                        if (!canceled) {
+                            val pointerCount = event.changes.size
+                            // Only capture gestures when pinching with 2+ fingers or already zoomed in
+                            if (pointerCount >= 2 || scale > 1.05f) {
+                                val zoomChange = event.calculateZoom()
+                                val panChange = event.calculatePan()
 
-                    if (newScale <= 1.02f) {
-                        offset = Offset.Zero
-                    } else {
-                        val maxOffsetX = (screenWidthPx * (newScale - 1f)) / 2f
-                        val maxOffsetY = (screenHeightPx * (newScale - 1f)) / 2f
+                                if (zoomChange != 1f || panChange != Offset.Zero) {
+                                    val newScale = (scale * zoomChange).coerceIn(1f, 5f)
+                                    scale = newScale
 
-                        val newX = (offset.x + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
-                        val newY = (offset.y + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-                        offset = Offset(newX, newY)
-                    }
+                                    if (newScale <= 1.02f) {
+                                        offset = Offset.Zero
+                                    } else {
+                                        val maxOffsetX = (screenWidthPx * (newScale - 1f)) / 2f
+                                        val maxOffsetY = (screenHeightPx * (newScale - 1f)) / 2f
+
+                                        val newX = (offset.x + panChange.x).coerceIn(-maxOffsetX, maxOffsetX)
+                                        val newY = (offset.y + panChange.y).coerceIn(-maxOffsetY, maxOffsetY)
+                                        offset = Offset(newX, newY)
+                                    }
+                                    event.changes.forEach { it.consume() }
+                                }
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
                 }
             },
         contentAlignment = Alignment.Center
