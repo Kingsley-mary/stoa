@@ -1,5 +1,6 @@
 package com.signal.reader
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -39,6 +41,7 @@ import com.signal.reader.ui.reader.ReaderScreen
 import com.signal.reader.ui.saved.SavedScreen
 import com.signal.reader.ui.search.SearchScreen
 import com.signal.reader.ui.settings.SettingsScreen
+import com.signal.reader.ui.settings.WidgetSettingsScreen
 import com.signal.reader.ui.sources.AddSourcesScreen
 import com.signal.reader.ui.sources.SourcePageScreen
 import com.signal.reader.ui.sources.SourcesScreen
@@ -48,12 +51,16 @@ import com.signal.reader.ui.theme.SignalTheme
 
 class MainActivity : ComponentActivity() {
 
+    private val navDestination = mutableStateOf<String?>(null)
+    private val navArticleId = mutableStateOf<Long?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         val app = application as SignalApplication
-        val initialArticleId = intent?.getLongExtra("article_id", -1L)?.takeIf { it > 0 }
+        navArticleId.value = intent?.getLongExtra("article_id", -1L)?.takeIf { it > 0 }
+        navDestination.value = intent?.getStringExtra("open_destination")
 
         setContent {
             val settings by app.settingsManager.settingsFlow.collectAsState()
@@ -63,10 +70,18 @@ class MainActivity : ComponentActivity() {
                     app = app,
                     isFirstLaunch = !settings.isFirstLaunchCompleted,
                     isCompactLayout = settings.homeLayout == "compact",
-                    initialArticleId = initialArticleId
+                    initialArticleId = navArticleId.value,
+                    initialDestination = navDestination.value
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        navArticleId.value = intent.getLongExtra("article_id", -1L).takeIf { it > 0 }
+        navDestination.value = intent.getStringExtra("open_destination")
     }
 }
 
@@ -75,7 +90,8 @@ fun SignalAppNav(
     app: SignalApplication,
     isFirstLaunch: Boolean,
     isCompactLayout: Boolean,
-    initialArticleId: Long? = null
+    initialArticleId: Long? = null,
+    initialDestination: String? = null
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -101,6 +117,12 @@ fun SignalAppNav(
     LaunchedEffect(initialArticleId) {
         if (initialArticleId != null && initialArticleId > 0) {
             navController.navigate("reader/$initialArticleId")
+        }
+    }
+
+    LaunchedEffect(initialDestination) {
+        if (initialDestination == "widget_settings") {
+            navController.navigate("widget_settings")
         }
     }
 
@@ -447,6 +469,20 @@ fun SignalAppNav(
                     // Settings Screen
                     composable("settings") {
                         SettingsScreen(
+                            settingsManager = app.settingsManager,
+                            repository = app.repository,
+                            onBack = {
+                                navController.popBackStack()
+                            },
+                            onOpenWidgetSettings = {
+                                navController.navigate("widget_settings")
+                            }
+                        )
+                    }
+
+                    // Widget Settings Screen
+                    composable("widget_settings") {
+                        WidgetSettingsScreen(
                             settingsManager = app.settingsManager,
                             repository = app.repository,
                             onBack = {

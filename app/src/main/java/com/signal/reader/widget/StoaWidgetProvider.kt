@@ -7,7 +7,13 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import android.view.View
 import android.widget.RemoteViews
@@ -30,19 +36,35 @@ class StoaWidgetProvider : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray
     ) {
-        // Immediately render the layout so Launcher never shows "Problem loading widget"
+        // Immediately render initial layout so Launcher never shows "Problem loading widget"
         for (widgetId in appWidgetIds) {
             val initialViews = RemoteViews(context.packageName, R.layout.widget_stoa_hero)
-            val intent = Intent(context, MainActivity::class.java).apply {
+            
+            // Story tap intent
+            val storyIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
-            val pendingIntent = PendingIntent.getActivity(
+            val storyPendingIntent = PendingIntent.getActivity(
                 context,
                 widgetId,
-                intent,
+                storyIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            initialViews.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
+            initialViews.setOnClickPendingIntent(R.id.widget_content, storyPendingIntent)
+
+            // Settings button tap intent
+            val settingsIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("open_destination", "widget_settings")
+            }
+            val settingsPendingIntent = PendingIntent.getActivity(
+                context,
+                widgetId + 20000,
+                settingsIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            initialViews.setOnClickPendingIntent(R.id.widget_settings_btn, settingsPendingIntent)
+
             appWidgetManager.updateAppWidget(widgetId, initialViews)
         }
 
@@ -102,6 +124,7 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                 views.setViewVisibility(R.id.widget_scrim, View.GONE)
                                 views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_white)
                                 views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg)
+                                views.setImageViewResource(R.id.widget_settings_btn, R.drawable.ic_widget_settings)
                                 views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
@@ -112,6 +135,7 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                 views.setViewVisibility(R.id.widget_scrim, View.GONE)
                                 views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_black)
                                 views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg_accent)
+                                views.setImageViewResource(R.id.widget_settings_btn, R.drawable.ic_widget_settings_light)
                                 views.setTextColor(R.id.widget_brand, Color.parseColor("#F1EDE4"))
                                 views.setTextColor(R.id.widget_title, Color.parseColor("#F1EDE4"))
                                 views.setTextColor(R.id.widget_meta, Color.parseColor("#9C978B"))
@@ -127,13 +151,18 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                             .allowHardware(false)
                                             .build()
                                         val result = (Coil.imageLoader(context).execute(req) as? SuccessResult)?.drawable
-                                        val bitmap = (result as? BitmapDrawable)?.bitmap
-                                        if (bitmap != null) {
-                                            views.setImageViewBitmap(R.id.widget_bg_image, bitmap)
+                                        val rawBitmap = (result as? BitmapDrawable)?.bitmap
+                                        if (rawBitmap != null) {
+                                            // Crop bitmap to match 24dp rounded corners so it can never be sharp
+                                            val cornerRadiusPx = 24f * context.resources.displayMetrics.density
+                                            val roundedBitmap = createRoundedBitmap(rawBitmap, cornerRadiusPx)
+
+                                            views.setImageViewBitmap(R.id.widget_bg_image, roundedBitmap)
                                             views.setViewVisibility(R.id.widget_bg_image, View.VISIBLE)
                                             views.setViewVisibility(R.id.widget_scrim, View.VISIBLE)
                                             views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_black)
                                             views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg_accent)
+                                            views.setImageViewResource(R.id.widget_settings_btn, R.drawable.ic_widget_settings_light)
                                             views.setTextColor(R.id.widget_brand, Color.parseColor("#FFFFFF"))
                                             views.setTextColor(R.id.widget_title, Color.parseColor("#FFFFFF"))
                                             views.setTextColor(R.id.widget_meta, Color.parseColor("#E0DDD5"))
@@ -148,6 +177,7 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                     views.setViewVisibility(R.id.widget_scrim, View.GONE)
                                     views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_paper)
                                     views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg)
+                                    views.setImageViewResource(R.id.widget_settings_btn, R.drawable.ic_widget_settings)
                                     views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
                                     views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
                                     views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
@@ -160,6 +190,7 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                 views.setViewVisibility(R.id.widget_scrim, View.GONE)
                                 views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_paper)
                                 views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg)
+                                views.setImageViewResource(R.id.widget_settings_btn, R.drawable.ic_widget_settings)
                                 views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
@@ -167,25 +198,49 @@ class StoaWidgetProvider : AppWidgetProvider() {
                             }
                         }
 
-                        // Tap opens MainActivity with article_id
-                        val intent = Intent(context, MainActivity::class.java).apply {
+                        // 1. Story click: Opens article in Reader
+                        val storyIntent = Intent(context, MainActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                             if (heroArticle != null) {
                                 putExtra("article_id", heroArticle.id)
                             }
                         }
-                        val pendingIntent = PendingIntent.getActivity(
+                        val storyPendingIntent = PendingIntent.getActivity(
                             context,
                             widgetId,
-                            intent,
+                            storyIntent,
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                         )
-                        views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
+                        views.setOnClickPendingIntent(R.id.widget_content, storyPendingIntent)
+
+                        // 2. Settings button click: Opens widget settings directly
+                        val settingsIntent = Intent(context, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            putExtra("open_destination", "widget_settings")
+                        }
+                        val settingsPendingIntent = PendingIntent.getActivity(
+                            context,
+                            widgetId + 20000,
+                            settingsIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+                        views.setOnClickPendingIntent(R.id.widget_settings_btn, settingsPendingIntent)
 
                         manager.updateAppWidget(widgetId, views)
                     }
                 } catch (_: Exception) {}
             }
+        }
+
+        private fun createRoundedBitmap(src: Bitmap, cornerRadiusPx: Float): Bitmap {
+            val output = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(output)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val rect = RectF(0f, 0f, src.width.toFloat(), src.height.toFloat())
+            canvas.drawRoundRect(rect, cornerRadiusPx, cornerRadiusPx, paint)
+            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            canvas.drawBitmap(src, 0f, 0f, paint)
+            return output
         }
     }
 }
