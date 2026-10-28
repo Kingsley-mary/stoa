@@ -1,36 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/widget_container"
+    android:id="@android:id/background"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_bg_paper"
+    android:background="@drawable/widget_root_bg"
     android:clipChildren="true"
     android:clipToOutline="true">
 
-    <!-- Solid or paper background image -->
+    <!-- Solid, paper, or hero image background rendered as a physical rounded bitmap -->
     <ImageView
         android:id="@+id/widget_background"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="fitXY"
         android:src="@drawable/widget_bg_paper" />
-
-    <!-- Background hero image when article_image style is active -->
-    <ImageView
-        android:id="@+id/widget_bg_image"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:scaleType="centerCrop"
-        android:visibility="gone" />
-
-    <!-- Dark gradient scrim to guarantee high text contrast over images -->
-    <ImageView
-        android:id="@+id/widget_scrim"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:scaleType="fitXY"
-        android:src="@drawable/widget_scrim_overlay"
-        android:visibility="gone" />
 
     <!-- Content overlay -->
     <LinearLayout

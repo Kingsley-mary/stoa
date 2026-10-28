@@ -195,40 +195,20 @@ fun WidgetSettingsScreen(
                             letterSpacing = 1.sp
                         )
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        // Top Right: Unread Badge
+                        val badgeBg = if (effectiveBg == "dark" || effectiveBg == "article_image") Color(0xFFE4472B) else Color(0xFF141413)
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(badgeBg)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
                         ) {
-                            // Unread Badge
-                            val badgeBg = if (effectiveBg == "dark" || effectiveBg == "article_image") Color(0xFFE4472B) else Color(0xFF141413)
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(badgeBg)
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = if (unreadCount > 0) "$unreadCount unread" else "All read",
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-
-                            // Settings gear icon preview
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "⚙",
-                                    fontSize = 12.sp,
-                                    color = previewTextColor
-                                )
-                            }
+                            Text(
+                                text = if (unreadCount > 0) "$unreadCount unread" else "All read",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
 
