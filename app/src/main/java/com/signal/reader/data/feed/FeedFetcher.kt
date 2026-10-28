@@ -33,7 +33,7 @@ class FeedFetcher(
     }
 
     companion object {
-        const val USER_AGENT = "SignalReader/1.2 (Android; RSS Reader; +https://github.com/signal/reader)"
+        const val USER_AGENT = "StoaReader/1.2 (Android; RSS Reader; +https://github.com/stoa/reader)"
 
         fun createDefaultClient(): OkHttpClient {
             return OkHttpClient.Builder()

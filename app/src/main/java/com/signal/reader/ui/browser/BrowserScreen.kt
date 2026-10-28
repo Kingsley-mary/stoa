@@ -67,6 +67,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.ui.components.BookmarkIcon
 import com.signal.reader.ui.components.rememberSignalHaptics
+import com.signal.reader.ui.theme.DarkBg
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
@@ -90,6 +91,12 @@ fun BrowserScreen(
 ) {
     val context = LocalContext.current
     val colors = SignalTheme.colors
+    val isDark = colors.bg == DarkBg
+    val dockBg = if (isDark) colors.card else colors.ink
+    val dockContent = if (isDark) colors.ink else colors.bg
+    val dockSubContent = if (isDark) colors.mute else colors.bg.copy(alpha = 0.65f)
+    val progressColor = if (isDark) colors.accent else colors.bg
+
     val haptics = rememberSignalHaptics()
     val coroutineScope = rememberCoroutineScope()
     val configuration = LocalConfiguration.current
@@ -206,6 +213,12 @@ fun BrowserScreen(
                         builtInZoomControls = true
                         displayZoomControls = false
                         setSupportZoom(true)
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                            try {
+                                @Suppress("DEPRECATION")
+                                forceDark = if (isDark) android.webkit.WebSettings.FORCE_DARK_ON else android.webkit.WebSettings.FORCE_DARK_OFF
+                            } catch (_: Exception) {}
+                        }
                     }
 
                     // Scrolling down shrinks pill to 196px address; scrolling up restores controls
@@ -288,6 +301,12 @@ fun BrowserScreen(
             },
             update = { view ->
                 view.setBackgroundColor(colors.bg.toArgb())
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    try {
+                        @Suppress("DEPRECATION")
+                        view.settings.forceDark = if (isDark) android.webkit.WebSettings.FORCE_DARK_ON else android.webkit.WebSettings.FORCE_DARK_OFF
+                    } catch (_: Exception) {}
+                }
             }
         )
 
@@ -415,7 +434,7 @@ fun BrowserScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
-                        .background(colors.bg)
+                        .background(if (isDark) colors.card else colors.bg)
                         .border(1.dp, colors.line, RoundedCornerShape(20.dp))
                         .padding(horizontal = 18.dp, vertical = 14.dp)
                 ) {
@@ -453,7 +472,8 @@ fun BrowserScreen(
                     .width(animatedPillWidth)
                     .height(56.dp)
                     .clip(CircleShape)
-                    .background(colors.ink)
+                    .then(if (isDark) Modifier.border(1.dp, colors.line, CircleShape) else Modifier)
+                    .background(dockBg)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -481,7 +501,7 @@ fun BrowserScreen(
                         ) {
                             Text(
                                 text = "✕",
-                                color = colors.bg,
+                                color = dockContent,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -505,7 +525,7 @@ fun BrowserScreen(
                         ) {
                             Text(
                                 text = "‹",
-                                color = colors.bg,
+                                color = dockContent,
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -529,7 +549,7 @@ fun BrowserScreen(
                         ) {
                             Text(
                                 text = "›",
-                                color = colors.bg,
+                                color = dockContent,
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -566,7 +586,7 @@ fun BrowserScreen(
                             ) {
                                 Text(
                                     text = (titleHint ?: cleanDomain),
-                                    color = colors.bg,
+                                    color = dockContent,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -574,7 +594,7 @@ fun BrowserScreen(
                                 )
                                 Text(
                                     text = cleanDomain,
-                                    color = colors.bg.copy(alpha = 0.65f),
+                                    color = dockSubContent,
                                     fontSize = 11.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -585,11 +605,12 @@ fun BrowserScreen(
                                 // Circular reload arrow
                                 Text(
                                     text = "↻",
-                                    color = colors.bg,
+                                    color = dockContent,
                                     fontSize = 18.sp,
                                     modifier = Modifier
                                         .rotate(reloadRotation.value)
                                         .padding(start = 6.dp)
+                                        .clickable { triggerReload() }
                                 )
                             }
                         }
@@ -617,7 +638,7 @@ fun BrowserScreen(
                         ) {
                             BookmarkIcon(
                                 isFilled = isSaved,
-                                color = colors.bg,
+                                color = dockContent,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -632,7 +653,7 @@ fun BrowserScreen(
                         ) {
                             Text(
                                 text = "↗",
-                                color = colors.bg,
+                                color = dockContent,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -647,7 +668,7 @@ fun BrowserScreen(
                             .align(Alignment.BottomStart)
                             .fillMaxWidth(animatedProgress.coerceIn(0.08f, 1f))
                             .height(2.dp)
-                            .background(colors.bg)
+                            .background(progressColor)
                     )
                 }
             }

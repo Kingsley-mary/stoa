@@ -298,6 +298,57 @@ object StarterSources {
             description = "Contemporary fiction, critique and literary craft",
             siteUrl = "https://lithub.com",
             feedUrl = "https://lithub.com/feed/"
+        ),
+
+        // Gaming
+        StarterSource(
+            group = "Gaming",
+            name = "Polygon",
+            description = "Video game culture, longform reviews and gaming craft",
+            siteUrl = "https://www.polygon.com",
+            feedUrl = "https://www.polygon.com/feed/"
+        ),
+        StarterSource(
+            group = "Gaming",
+            name = "Eurogamer",
+            description = "In-depth reviews, retrospectives and critical reporting",
+            siteUrl = "https://www.eurogamer.net",
+            feedUrl = "https://www.eurogamer.net/feed"
+        ),
+        StarterSource(
+            group = "Gaming",
+            name = "Rock Paper Shotgun",
+            description = "PC gaming, indie discoveries and passionate critique",
+            siteUrl = "https://www.rockpapershotgun.com",
+            feedUrl = "https://www.rockpapershotgun.com/feed"
+        ),
+        StarterSource(
+            group = "Gaming",
+            name = "Game Developer",
+            description = "Game design, engineering craft and industry post-mortems",
+            siteUrl = "https://www.gamedeveloper.com",
+            feedUrl = "https://www.gamedeveloper.com/rss.xml"
+        ),
+        StarterSource(
+            group = "Gaming",
+            name = "Aftermath",
+            description = "Worker-owned independent gaming and internet culture",
+            siteUrl = "https://aftermath.site",
+            feedUrl = "https://aftermath.site/rss/"
+        ),
+        StarterSource(
+            group = "Gaming",
+            name = "Kotaku",
+            description = "Video games, industry news and gaming culture",
+            siteUrl = "https://kotaku.com",
+            feedUrl = "https://kotaku.com/feed"
+        ),
+        StarterSource(
+            group = "Gaming",
+            name = "TouchArcade",
+            description = "Handheld, mobile and indie game coverage",
+            siteUrl = "https://toucharcade.com",
+            feedUrl = "https://toucharcade.com/feed/"
         )
     )
 }

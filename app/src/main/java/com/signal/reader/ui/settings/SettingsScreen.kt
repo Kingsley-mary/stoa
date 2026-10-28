@@ -379,7 +379,7 @@ fun SettingsScreen(
                         SettingsActionRow(
                             label = "Export sources",
                             sublabel = "Save your list as an OPML file",
-                            onClick = { exportOpmlLauncher.launch("signal_sources.opml") }
+                            onClick = { exportOpmlLauncher.launch("stoa_sources.opml") }
                         )
                     }
                 }
@@ -406,9 +406,9 @@ fun SettingsScreen(
                             )
                             val versionName = remember {
                                 try {
-                                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2"
+                                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.3"
                                 } catch (_: Exception) {
-                                    "1.2"
+                                    "1.3"
                                 }
                             }
                             Text(

@@ -130,7 +130,7 @@ fun SplashScreen(
 
             // Brand Wordmark
             Text(
-                text = "SIGNAL",
+                text = "STOA",
                 style = SignalTheme.typography.wordmark,
                 color = Color(0xFFF6F3EB),
                 fontSize = 26.sp,

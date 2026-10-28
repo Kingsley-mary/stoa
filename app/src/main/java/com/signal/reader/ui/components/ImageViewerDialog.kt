@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +77,7 @@ fun ImageViewerDialog(
     )
 
     var showControls by remember { mutableStateOf(true) }
+    var isZoomedIn by remember { mutableStateOf(false) }
 
     BackHandler { onDismiss() }
 
@@ -94,6 +96,7 @@ fun ImageViewerDialog(
             // Horizontal Pager for swiping between article images
             HorizontalPager(
                 state = pagerState,
+                userScrollEnabled = !isZoomedIn,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
                 val articleImg = images[page]
@@ -106,6 +109,9 @@ fun ImageViewerDialog(
                     },
                     onToggleControls = {
                         showControls = !showControls
+                    },
+                    onZoomChanged = { zoomed ->
+                        isZoomedIn = zoomed
                     }
                 )
             }
@@ -227,7 +233,8 @@ fun ImageViewerDialog(
 private fun ZoomableImageItem(
     image: ArticleImage,
     onTapBackdrop: () -> Unit,
-    onToggleControls: () -> Unit
+    onToggleControls: () -> Unit,
+    onZoomChanged: (Boolean) -> Unit = {}
 ) {
     val haptics = rememberSignalHaptics()
     val density = LocalDensity.current
@@ -237,6 +244,10 @@ private fun ZoomableImageItem(
 
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+
+    LaunchedEffect(scale) {
+        onZoomChanged(scale > 1.05f)
+    }
 
     Box(
         modifier = Modifier
@@ -268,12 +279,14 @@ private fun ZoomableImageItem(
                     }
                 )
             }
-            .pointerInput(scale) {
-                if (scale > 1f) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        val newScale = (scale * zoom).coerceIn(1f, 5f)
-                        scale = newScale
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val newScale = (scale * zoom).coerceIn(1f, 5f)
+                    scale = newScale
 
+                    if (newScale <= 1.02f) {
+                        offset = Offset.Zero
+                    } else {
                         val maxOffsetX = (screenWidthPx * (newScale - 1f)) / 2f
                         val maxOffsetY = (screenHeightPx * (newScale - 1f)) / 2f
 

@@ -80,7 +80,8 @@ private val ALL_CATEGORIES = listOf(
     "Product Design",
     "Visual Art & Design",
     "Science",
-    "Tech & Culture"
+    "Tech & Culture",
+    "Gaming"
 )
 
 @Composable

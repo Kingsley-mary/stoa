@@ -143,7 +143,7 @@ fun SignalHeader(
 
             // Wordmark Logo
             Text(
-                text = "Signal",
+                text = "Stoa",
                 style = SignalTheme.typography.wordmark,
                 color = colors.ink,
                 modifier = Modifier.clickable(
