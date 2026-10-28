@@ -1,5 +1,6 @@
 package com.signal.reader.ui.reader
 
+import android.content.Intent
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.AnimatedVisibility
@@ -108,6 +109,7 @@ import com.signal.reader.ui.components.TimeUtils
 import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.reader.ArticleAudioPlayer
 import com.signal.reader.ui.reader.AudioPlaybackStatus
+import com.signal.reader.ui.theme.SignalAccent
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
@@ -490,6 +492,16 @@ fun ReaderScreen(
                                 },
                                 onLinkClick = { url ->
                                     openWeb(url, null)
+                                },
+                                onVideoClick = { videoUrl ->
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl)).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {
+                                        openWeb(videoUrl, null)
+                                    }
                                 }
                             )
                         }
@@ -1019,12 +1031,35 @@ private fun FactRow(
     HorizontalDivider(color = colors.line, thickness = 1.dp)
 }
 
+private enum class VideoProvider {
+    YOUTUBE,
+    VIMEO,
+    HTML5,
+    GENERIC
+}
+
 private sealed class ContentBlock {
     data class Paragraph(val text: String, val html: String = text) : ContentBlock()
     data class Heading(val text: String, val level: Int) : ContentBlock()
     data class Image(val url: String, val caption: String? = null) : ContentBlock()
+    data class Video(
+        val videoUrl: String,
+        val posterUrl: String? = null,
+        val title: String? = null,
+        val provider: VideoProvider = VideoProvider.GENERIC
+    ) : ContentBlock()
     data class Quote(val text: String) : ContentBlock()
     data class BulletList(val items: List<String>, val htmlItems: List<String> = items) : ContentBlock()
+}
+
+private fun extractYouTubeVideoId(url: String): String? {
+    val regex = Regex("""(?:youtu\.be/|youtube\.com/(?:embed/|v/|watch\?v=|watch\?.+&v=))([\w-]{11})""")
+    return regex.find(url)?.groupValues?.get(1)
+}
+
+private fun extractVimeoVideoId(url: String): String? {
+    val regex = Regex("""vimeo\.com/(?:video/)?(\d+)""")
+    return regex.find(url)?.groupValues?.get(1)
 }
 
 private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List<ContentBlock> {
@@ -1033,7 +1068,7 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
     val seenImages = mutableSetOf<String>()
     heroImageUrl?.let { seenImages.add(it.trim()) }
 
-    val elements = doc.body().select("p, h1, h2, h3, h4, figure, img, blockquote, ul, ol")
+    val elements = doc.body().select("p, h1, h2, h3, h4, figure, img, blockquote, ul, ol, iframe, video")
     val processedElements = mutableSetOf<org.jsoup.nodes.Element>()
 
     for (el in elements) {
@@ -1048,6 +1083,61 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                     processedElements.add(el)
                 }
             }
+            "iframe" -> {
+                val src = el.attr("src").ifBlank { el.attr("data-src") }.trim()
+                val title = el.attr("title").trim().ifBlank { null }
+                val ytId = extractYouTubeVideoId(src)
+                if (ytId != null) {
+                    blocks.add(
+                        ContentBlock.Video(
+                            videoUrl = "https://www.youtube.com/watch?v=$ytId",
+                            posterUrl = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
+                            title = title,
+                            provider = VideoProvider.YOUTUBE
+                        )
+                    )
+                    processedElements.add(el)
+                } else {
+                    val vimeoId = extractVimeoVideoId(src)
+                    if (vimeoId != null) {
+                        blocks.add(
+                            ContentBlock.Video(
+                                videoUrl = "https://vimeo.com/$vimeoId",
+                                posterUrl = null,
+                                title = title,
+                                provider = VideoProvider.VIMEO
+                            )
+                        )
+                        processedElements.add(el)
+                    } else if (src.isNotBlank() && (src.contains("embed") || src.contains("video") || src.contains("player"))) {
+                        blocks.add(
+                            ContentBlock.Video(
+                                videoUrl = src,
+                                posterUrl = null,
+                                title = title,
+                                provider = VideoProvider.GENERIC
+                            )
+                        )
+                        processedElements.add(el)
+                    }
+                }
+            }
+            "video" -> {
+                val src = el.attr("src").ifBlank { el.selectFirst("source")?.attr("src") }?.trim()
+                val poster = el.attr("poster").trim().ifBlank { null }
+                val title = el.attr("title").trim().ifBlank { null }
+                if (!src.isNullOrBlank()) {
+                    blocks.add(
+                        ContentBlock.Video(
+                            videoUrl = src,
+                            posterUrl = poster,
+                            title = title,
+                            provider = VideoProvider.HTML5
+                        )
+                    )
+                    processedElements.addAll(el.getAllElements())
+                }
+            }
             "figure" -> {
                 val img = el.selectFirst("img")
                 val src = img?.attr("src")?.ifBlank { img.attr("data-src") }?.trim()
@@ -1058,27 +1148,74 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                 processedElements.addAll(el.getAllElements())
             }
             "p" -> {
-                val img = el.selectFirst("img")
-                val text = el.text().trim()
-                if (img != null && text.length < 5) {
-                    val src = img.attr("src").ifBlank { img.attr("data-src") }.trim()
-                    val alt = img.attr("alt").trim().ifBlank { img.attr("title").trim() }
-                    if (src.isNotBlank() && !src.startsWith("data:") && seenImages.add(src)) {
-                        blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
+                val iframe = el.selectFirst("iframe")
+                val video = el.selectFirst("video")
+                if (iframe != null) {
+                    val src = iframe.attr("src").ifBlank { iframe.attr("data-src") }.trim()
+                    val title = iframe.attr("title").trim().ifBlank { null }
+                    val ytId = extractYouTubeVideoId(src)
+                    if (ytId != null) {
+                        blocks.add(
+                            ContentBlock.Video(
+                                videoUrl = "https://www.youtube.com/watch?v=$ytId",
+                                posterUrl = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
+                                title = title,
+                                provider = VideoProvider.YOUTUBE
+                            )
+                        )
+                        processedElements.addAll(el.getAllElements())
+                    } else {
+                        val vimeoId = extractVimeoVideoId(src)
+                        if (vimeoId != null) {
+                            blocks.add(
+                                ContentBlock.Video(
+                                    videoUrl = "https://vimeo.com/$vimeoId",
+                                    posterUrl = null,
+                                    title = title,
+                                    provider = VideoProvider.VIMEO
+                                )
+                            )
+                            processedElements.addAll(el.getAllElements())
+                        }
+                    }
+                } else if (video != null) {
+                    val src = video.attr("src").ifBlank { video.selectFirst("source")?.attr("src") }?.trim()
+                    val poster = video.attr("poster").trim().ifBlank { null }
+                    val title = video.attr("title").trim().ifBlank { null }
+                    if (!src.isNullOrBlank()) {
+                        blocks.add(
+                            ContentBlock.Video(
+                                videoUrl = src,
+                                posterUrl = poster,
+                                title = title,
+                                provider = VideoProvider.HTML5
+                            )
+                        )
+                        processedElements.addAll(el.getAllElements())
                     }
                 } else {
-                    if (text.isNotBlank()) {
-                        blocks.add(ContentBlock.Paragraph(text = text, html = el.html()))
-                    }
-                    if (img != null) {
+                    val img = el.selectFirst("img")
+                    val text = el.text().trim()
+                    if (img != null && text.length < 5) {
                         val src = img.attr("src").ifBlank { img.attr("data-src") }.trim()
-                        val alt = img.attr("alt").trim()
+                        val alt = img.attr("alt").trim().ifBlank { img.attr("title").trim() }
                         if (src.isNotBlank() && !src.startsWith("data:") && seenImages.add(src)) {
                             blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
                         }
+                    } else {
+                        if (text.isNotBlank()) {
+                            blocks.add(ContentBlock.Paragraph(text = text, html = el.html()))
+                        }
+                        if (img != null) {
+                            val src = img.attr("src").ifBlank { img.attr("data-src") }.trim()
+                            val alt = img.attr("alt").trim()
+                            if (src.isNotBlank() && !src.startsWith("data:") && seenImages.add(src)) {
+                                blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
+                            }
+                        }
                     }
+                    processedElements.add(el)
                 }
-                processedElements.add(el)
             }
             "img" -> {
                 if (el.parent()?.tagName()?.lowercase() !in listOf("figure", "p")) {
@@ -1181,7 +1318,8 @@ private fun RenderContentBlock(
     fontSize: androidx.compose.ui.unit.TextUnit,
     isSerif: Boolean = false,
     onImageClick: (url: String, caption: String?) -> Unit,
-    onLinkClick: (url: String) -> Unit
+    onLinkClick: (url: String) -> Unit,
+    onVideoClick: (url: String) -> Unit
 ) {
     val colors = SignalTheme.colors
 
@@ -1244,6 +1382,12 @@ private fun RenderContentBlock(
                     )
                 }
             }
+        }
+        is ContentBlock.Video -> {
+            VideoCardBlock(
+                block = block,
+                onVideoClick = onVideoClick
+            )
         }
         is ContentBlock.Heading -> {
             Text(
@@ -1312,6 +1456,149 @@ private fun RenderContentBlock(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun VideoCardBlock(
+    block: ContentBlock.Video,
+    onVideoClick: (url: String) -> Unit
+) {
+    val colors = SignalTheme.colors
+    val haptics = rememberSignalHaptics()
+
+    val providerBadgeText = when (block.provider) {
+        VideoProvider.YOUTUBE -> "YOUTUBE"
+        VideoProvider.VIMEO -> "VIMEO"
+        VideoProvider.HTML5 -> "VIDEO"
+        VideoProvider.GENERIC -> "VIDEO"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(18.dp))
+                .background(colors.card)
+                .border(1.dp, colors.line, RoundedCornerShape(18.dp))
+                .clickable {
+                    haptics.pop()
+                    onVideoClick(block.videoUrl)
+                }
+        ) {
+            // Poster thumbnail if available
+            if (!block.posterUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(block.posterUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = block.title ?: "Video preview",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                // Sleek modernist dark card background if no poster
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF22201D),
+                                    Color(0xFF2C2A26),
+                                    Color(0xFF161514)
+                                )
+                            )
+                        )
+                )
+            }
+
+            // Dark gradient scrim overlay for contrast & cinematic editorial look
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.40f),
+                                Color.Black.copy(alpha = 0.20f),
+                                Color.Black.copy(alpha = 0.70f)
+                            )
+                        )
+                    )
+            )
+
+            // Top-left provider pill badge (e.g., "▶ YOUTUBE")
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(14.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    PlayIcon(
+                        color = SignalAccent,
+                        modifier = Modifier.size(9.dp)
+                    )
+                    Text(
+                        text = providerBadgeText,
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
+
+            // Center Vermilion Play Capsule ("▶ WATCH VIDEO")
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .clip(CircleShape)
+                    .background(SignalAccent)
+                    .padding(horizontal = 20.dp, vertical = 11.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PlayIcon(
+                        color = Color.White,
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Text(
+                        text = "WATCH VIDEO",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp
+                    )
+                }
+            }
+        }
+
+        // Caption / Title below card if available
+        if (!block.title.isNullOrBlank()) {
+            Text(
+                text = block.title,
+                color = colors.mute,
+                fontSize = 13.sp,
+                fontStyle = FontStyle.Italic,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp)
+            )
         }
     }
 }

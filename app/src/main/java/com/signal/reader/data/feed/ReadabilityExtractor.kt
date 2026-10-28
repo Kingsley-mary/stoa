@@ -31,8 +31,14 @@ object ReadabilityExtractor {
             val html = response.body?.string() ?: return@withContext null
             val doc = Jsoup.parse(html, url)
 
-            // Strip non-content elements
-            doc.select("script, style, noscript, header, footer, nav, aside, iframe, .ad, .advertisement, .social-share, .cookie-banner, .newsletter-signup").remove()
+            // Strip non-content elements but preserve YouTube/Vimeo video iframes and video tags
+            doc.select("iframe").forEach { iframe ->
+                val src = iframe.attr("src").lowercase()
+                if (!src.contains("youtube") && !src.contains("youtu.be") && !src.contains("vimeo") && !src.contains("player.vimeo")) {
+                    iframe.remove()
+                }
+            }
+            doc.select("script, style, noscript, header, footer, nav, aside, .ad, .advertisement, .social-share, .cookie-banner, .newsletter-signup").remove()
 
             // Find best content candidate
             val candidateSelectors = listOf(

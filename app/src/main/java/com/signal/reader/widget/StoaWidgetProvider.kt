@@ -40,7 +40,7 @@ class StoaWidgetProvider : AppWidgetProvider() {
         for (widgetId in appWidgetIds) {
             val initialViews = RemoteViews(context.packageName, R.layout.widget_stoa_hero)
             
-            // Story tap intent
+            // Story tap intent: opens article or Stoa Home
             val storyIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
@@ -51,19 +51,6 @@ class StoaWidgetProvider : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             initialViews.setOnClickPendingIntent(R.id.widget_content, storyPendingIntent)
-
-            // Settings button tap intent
-            val settingsIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("open_destination", "widget_settings")
-            }
-            val settingsPendingIntent = PendingIntent.getActivity(
-                context,
-                widgetId + 20000,
-                settingsIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            initialViews.setOnClickPendingIntent(R.id.widget_settings_btn, settingsPendingIntent)
 
             appWidgetManager.updateAppWidget(widgetId, initialViews)
         }
@@ -124,7 +111,6 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                 views.setViewVisibility(R.id.widget_scrim, View.GONE)
                                 views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_white)
                                 views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg)
-                                views.setImageViewResource(R.id.widget_settings_btn, R.drawable.ic_widget_settings)
                                 views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
@@ -135,7 +121,6 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                 views.setViewVisibility(R.id.widget_scrim, View.GONE)
                                 views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_black)
                                 views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg_accent)
-                                views.setImageViewResource(R.id.widget_settings_btn, R.drawable.ic_widget_settings_light)
                                 views.setTextColor(R.id.widget_brand, Color.parseColor("#F1EDE4"))
                                 views.setTextColor(R.id.widget_title, Color.parseColor("#F1EDE4"))
                                 views.setTextColor(R.id.widget_meta, Color.parseColor("#9C978B"))
@@ -162,7 +147,6 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                             views.setViewVisibility(R.id.widget_scrim, View.VISIBLE)
                                             views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_black)
                                             views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg_accent)
-                                            views.setImageViewResource(R.id.widget_settings_btn, R.drawable.ic_widget_settings_light)
                                             views.setTextColor(R.id.widget_brand, Color.parseColor("#FFFFFF"))
                                             views.setTextColor(R.id.widget_title, Color.parseColor("#FFFFFF"))
                                             views.setTextColor(R.id.widget_meta, Color.parseColor("#E0DDD5"))
@@ -177,7 +161,6 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                     views.setViewVisibility(R.id.widget_scrim, View.GONE)
                                     views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_paper)
                                     views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg)
-                                    views.setImageViewResource(R.id.widget_settings_btn, R.drawable.ic_widget_settings)
                                     views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
                                     views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
                                     views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
@@ -190,7 +173,6 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                 views.setViewVisibility(R.id.widget_scrim, View.GONE)
                                 views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_paper)
                                 views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg)
-                                views.setImageViewResource(R.id.widget_settings_btn, R.drawable.ic_widget_settings)
                                 views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
@@ -198,7 +180,7 @@ class StoaWidgetProvider : AppWidgetProvider() {
                             }
                         }
 
-                        // 1. Story click: Opens article in Reader
+                        // Story click: Opens article in Reader
                         val storyIntent = Intent(context, MainActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                             if (heroArticle != null) {
@@ -212,19 +194,6 @@ class StoaWidgetProvider : AppWidgetProvider() {
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                         )
                         views.setOnClickPendingIntent(R.id.widget_content, storyPendingIntent)
-
-                        // 2. Settings button click: Opens widget settings directly
-                        val settingsIntent = Intent(context, MainActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            putExtra("open_destination", "widget_settings")
-                        }
-                        val settingsPendingIntent = PendingIntent.getActivity(
-                            context,
-                            widgetId + 20000,
-                            settingsIntent,
-                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                        )
-                        views.setOnClickPendingIntent(R.id.widget_settings_btn, settingsPendingIntent)
 
                         manager.updateAppWidget(widgetId, views)
                     }
