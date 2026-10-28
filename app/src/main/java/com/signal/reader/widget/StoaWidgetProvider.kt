@@ -30,6 +30,22 @@ class StoaWidgetProvider : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray
     ) {
+        // Immediately render the layout so Launcher never shows "Problem loading widget"
+        for (widgetId in appWidgetIds) {
+            val initialViews = RemoteViews(context.packageName, R.layout.widget_stoa_hero)
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                widgetId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            initialViews.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
+            appWidgetManager.updateAppWidget(widgetId, initialViews)
+        }
+
         updateAllWidgets(context, appWidgetManager, appWidgetIds)
     }
 
@@ -48,7 +64,7 @@ class StoaWidgetProvider : AppWidgetProvider() {
 
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val app = SignalApplication.instance
+                    val app = context.applicationContext as? SignalApplication ?: SignalApplication.instance
                     val db = app.database
                     val settings = app.settingsManager.settingsFlow.value
                     val articles = db.articleDao().getHomeStreamFlow().firstOrNull() ?: emptyList()
@@ -79,26 +95,26 @@ class StoaWidgetProvider : AppWidgetProvider() {
                         val badgeText = if (unreadCount > 0) "$unreadCount unread" else "All read"
                         views.setTextViewText(R.id.widget_unread_badge, badgeText)
 
-                        // Apply background styling & high-contrast themes
+                        // Apply background styling & high-contrast themes via safe RemoteViews methods
                         when (effectiveBg) {
                             "light" -> {
                                 views.setViewVisibility(R.id.widget_bg_image, View.GONE)
                                 views.setViewVisibility(R.id.widget_scrim, View.GONE)
-                                views.setInt(R.id.widget_container, "setBackgroundResource", R.drawable.widget_bg_white)
+                                views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_white)
+                                views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg)
                                 views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
-                                views.setInt(R.id.widget_unread_badge, "setBackgroundResource", R.drawable.widget_badge_bg)
                                 views.setTextColor(R.id.widget_unread_badge, Color.parseColor("#FFFFFF"))
                             }
                             "dark" -> {
                                 views.setViewVisibility(R.id.widget_bg_image, View.GONE)
                                 views.setViewVisibility(R.id.widget_scrim, View.GONE)
-                                views.setInt(R.id.widget_container, "setBackgroundResource", R.drawable.widget_bg_black)
+                                views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_black)
+                                views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg_accent)
                                 views.setTextColor(R.id.widget_brand, Color.parseColor("#F1EDE4"))
                                 views.setTextColor(R.id.widget_title, Color.parseColor("#F1EDE4"))
                                 views.setTextColor(R.id.widget_meta, Color.parseColor("#9C978B"))
-                                views.setInt(R.id.widget_unread_badge, "setBackgroundResource", R.drawable.widget_badge_bg_accent)
                                 views.setTextColor(R.id.widget_unread_badge, Color.parseColor("#FFFFFF"))
                             }
                             "article_image" -> {
@@ -106,7 +122,7 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                 if (!heroArticle?.imageUrl.isNullOrBlank()) {
                                     try {
                                         val req = ImageRequest.Builder(context)
-                                            .data(heroArticle!!.imageUrl)
+                                            .data(heroArticle.imageUrl)
                                             .size(800, 450)
                                             .allowHardware(false)
                                             .build()
@@ -116,11 +132,11 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                             views.setImageViewBitmap(R.id.widget_bg_image, bitmap)
                                             views.setViewVisibility(R.id.widget_bg_image, View.VISIBLE)
                                             views.setViewVisibility(R.id.widget_scrim, View.VISIBLE)
-                                            views.setInt(R.id.widget_container, "setBackgroundResource", R.drawable.widget_bg_black)
+                                            views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_black)
+                                            views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg_accent)
                                             views.setTextColor(R.id.widget_brand, Color.parseColor("#FFFFFF"))
                                             views.setTextColor(R.id.widget_title, Color.parseColor("#FFFFFF"))
                                             views.setTextColor(R.id.widget_meta, Color.parseColor("#E0DDD5"))
-                                            views.setInt(R.id.widget_unread_badge, "setBackgroundResource", R.drawable.widget_badge_bg_accent)
                                             views.setTextColor(R.id.widget_unread_badge, Color.parseColor("#FFFFFF"))
                                             loadedImage = true
                                         }
@@ -128,14 +144,13 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                 }
 
                                 if (!loadedImage) {
-                                    // Fallback to warm paper
                                     views.setViewVisibility(R.id.widget_bg_image, View.GONE)
                                     views.setViewVisibility(R.id.widget_scrim, View.GONE)
-                                    views.setInt(R.id.widget_container, "setBackgroundResource", R.drawable.widget_bg_paper)
+                                    views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_paper)
+                                    views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg)
                                     views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
                                     views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
                                     views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
-                                    views.setInt(R.id.widget_unread_badge, "setBackgroundResource", R.drawable.widget_badge_bg)
                                     views.setTextColor(R.id.widget_unread_badge, Color.parseColor("#EEEAE1"))
                                 }
                             }
@@ -143,11 +158,11 @@ class StoaWidgetProvider : AppWidgetProvider() {
                                 // Default: "paper"
                                 views.setViewVisibility(R.id.widget_bg_image, View.GONE)
                                 views.setViewVisibility(R.id.widget_scrim, View.GONE)
-                                views.setInt(R.id.widget_container, "setBackgroundResource", R.drawable.widget_bg_paper)
+                                views.setImageViewResource(R.id.widget_background, R.drawable.widget_bg_paper)
+                                views.setImageViewResource(R.id.widget_badge_bg, R.drawable.widget_badge_bg)
                                 views.setTextColor(R.id.widget_brand, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_title, Color.parseColor("#141413"))
                                 views.setTextColor(R.id.widget_meta, Color.parseColor("#6B665C"))
-                                views.setInt(R.id.widget_unread_badge, "setBackgroundResource", R.drawable.widget_badge_bg)
                                 views.setTextColor(R.id.widget_unread_badge, Color.parseColor("#EEEAE1"))
                             }
                         }

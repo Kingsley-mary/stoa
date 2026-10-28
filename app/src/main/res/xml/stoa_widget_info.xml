@@ -6,7 +6,6 @@
     android:minHeight="110dp"
     android:targetCellWidth="4"
     android:targetCellHeight="2"
-    android:previewImage="@drawable/widget_preview"
     android:previewLayout="@layout/widget_stoa_hero"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
