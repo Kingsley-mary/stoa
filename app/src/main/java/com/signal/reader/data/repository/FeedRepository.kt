@@ -130,8 +130,15 @@ class FeedRepository(
         sourceDao.setMuted(sourceId, muted)
     }
 
+    private fun notifyWidgetUpdate() {
+        try {
+            com.signal.reader.widget.StoaWidgetProvider.updateAllWidgets(com.signal.reader.SignalApplication.instance)
+        } catch (_: Exception) {}
+    }
+
     suspend fun markArticleRead(articleId: Long) = withContext(Dispatchers.IO) {
         articleDao.setRead(articleId, true)
+        notifyWidgetUpdate()
     }
 
     suspend fun toggleSaved(articleId: Long) = withContext(Dispatchers.IO) {
@@ -147,6 +154,7 @@ class FeedRepository(
             val followed = sourceDao.getFollowedSources().map { it.id }
             articleDao.markAllAsReadForSources(followed)
         }
+        notifyWidgetUpdate()
     }
 
     suspend fun refreshSource(sourceId: Long): Int = withContext(Dispatchers.IO) {
@@ -173,6 +181,7 @@ class FeedRepository(
             }
             totalNew = tasks.awaitAll().sum()
         }
+        notifyWidgetUpdate()
         totalNew
     }
 

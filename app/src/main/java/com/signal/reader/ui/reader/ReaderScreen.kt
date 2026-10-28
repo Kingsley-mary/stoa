@@ -14,7 +14,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,9 +44,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -69,6 +73,7 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -80,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.signal.reader.data.feed.ReadabilityExtractor
 import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.repository.FeedRepository
@@ -89,10 +95,13 @@ import com.signal.reader.ui.components.BackChevron
 import com.signal.reader.ui.components.BookmarkIcon
 import com.signal.reader.ui.components.ImageViewerDialog
 import com.signal.reader.ui.components.MoonIcon
+import com.signal.reader.ui.components.QuoteCardGenerator
 import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.SunIcon
 import com.signal.reader.ui.components.TimeUtils
 import com.signal.reader.ui.components.rememberSignalHaptics
+import com.signal.reader.ui.reader.ArticleAudioPlayer
+import com.signal.reader.ui.reader.AudioPlaybackStatus
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
@@ -206,9 +215,27 @@ fun ReaderScreen(
         }
     }
 
-    val blocks = remember(currentArticle.fullContent, currentArticle.excerpt, currentArticle.imageUrl) {
-        val raw = currentArticle.fullContent ?: currentArticle.excerpt
+    val isSerif = settings.fontFamily == "serif"
+
+    var extractedHtml by remember { mutableStateOf<String?>(null) }
+    var isExtracting by remember { mutableStateOf(false) }
+
+    val audioPlayer = remember { ArticleAudioPlayer(context) }
+    val audioState by audioPlayer.playbackState.collectAsState()
+
+    DisposableEffect(Unit) {
+        onDispose {
+            audioPlayer.destroy()
+        }
+    }
+
+    val blocks = remember(currentArticle.fullContent, currentArticle.excerpt, extractedHtml, currentArticle.imageUrl) {
+        val raw = extractedHtml ?: currentArticle.fullContent ?: currentArticle.excerpt
         parseContentBlocks(raw, heroImageUrl = currentArticle.imageUrl)
+    }
+
+    val isExcerpt = remember(currentArticle.isExcerptOnly, currentArticle.fullContent, currentArticle.excerpt, extractedHtml) {
+        extractedHtml == null && (currentArticle.isExcerptOnly || (currentArticle.fullContent == null && (currentArticle.excerpt.length < 500 || currentArticle.excerpt.split(" ").size < 90)))
     }
 
     val allArticleImages = remember(currentArticle, blocks) {
@@ -275,6 +302,65 @@ fun ReaderScreen(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(start = 12.dp)
                             )
+                        }
+
+                        if (!showStickyTitle) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+
+                        // Right-hand actions: Listen (Audio TTS) & Quote Card Share
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Listen / Audio button
+                            val isAudioActive = audioState.status != AudioPlaybackStatus.IDLE
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isAudioActive) colors.accent else Color.Transparent)
+                                    .signalPressScale(0.92f) {
+                                        haptics.tick()
+                                        audioPlayer.togglePlayPause(
+                                            currentArticle.title,
+                                            currentArticle.excerpt.ifBlank { currentArticle.title }
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (audioState.status == AudioPlaybackStatus.PLAYING) "⏸" else "🔊",
+                                    color = if (isAudioActive) Color.White else colors.ink,
+                                    fontSize = 15.sp
+                                )
+                            }
+
+                            // Share Quote Card button
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .signalPressScale(0.92f) {
+                                        haptics.tick()
+                                        QuoteCardGenerator.generateAndShare(
+                                            context = context,
+                                            quote = currentArticle.excerpt.ifBlank { currentArticle.title },
+                                            sourceName = currentArticle.sourceName,
+                                            articleTitle = currentArticle.title,
+                                            author = currentArticle.author,
+                                            isDark = colors.bg == com.signal.reader.ui.theme.DarkBg
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "“",
+                                    color = colors.ink,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
                         }
                     }
                     // Bottom border line with reading progress indicator (#prog)
@@ -359,7 +445,7 @@ fun ReaderScreen(
                 item(key = "title") {
                     Text(
                         text = currentArticle.title.uppercase(),
-                        style = SignalTheme.typography.readerTitle,
+                        style = SignalTheme.typography.readerTitle(isSerif),
                         color = colors.ink,
                         modifier = Modifier
                             .padding(top = 22.dp, bottom = 22.dp)
@@ -381,12 +467,13 @@ fun ReaderScreen(
                 }
 
                 // Sequential content blocks (paragraphs, inline images, headings, quotes, lists)
-                val blocksToRender = if (currentArticle.isExcerptOnly) blocks.take(3) else blocks
+                val blocksToRender = if (isExcerpt) blocks.take(3) else blocks
                 itemsIndexed(blocksToRender, key = { idx, _ -> "content_block_$idx" }) { idx, block ->
                     Box(modifier = Modifier.fillMaxWidth()) {
                         RenderContentBlock(
                             block = block,
                             fontSize = currentFontSize,
+                            isSerif = isSerif,
                             onImageClick = { url, _ ->
                                 val clickedIdx = allArticleImages.indexOfFirst { it.url == url }.takeIf { it >= 0 } ?: 0
                                 activeGalleryIndex = clickedIdx
@@ -397,7 +484,7 @@ fun ReaderScreen(
                         )
 
                         // 110dp smooth gradient overlay directly fading the end of excerpt text
-                        if (currentArticle.isExcerptOnly && idx == blocksToRender.lastIndex) {
+                        if (isExcerpt && idx == blocksToRender.lastIndex) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -414,10 +501,26 @@ fun ReaderScreen(
                 }
 
                 // Excerpt-only CTA (#cta)
-                if (currentArticle.isExcerptOnly) {
+                if (isExcerpt) {
                     item(key = "excerpt_cta") {
                         ExcerptCta(
-                            onReadFullClick = { openWeb(currentArticle.url, currentArticle.title) }
+                            onReadFullClick = { openWeb(currentArticle.url, currentArticle.title) },
+                            onExtractClick = {
+                                coroutineScope.launch {
+                                    isExtracting = true
+                                    val fullHtml = ReadabilityExtractor.extractArticleHtml(currentArticle.url)
+                                    if (!fullHtml.isNullOrBlank()) {
+                                        extractedHtml = fullHtml
+                                        haptics.pop()
+                                    } else {
+                                        haptics.tick()
+                                        android.widget.Toast.makeText(context, "Could not extract full text. Opening site...", android.widget.Toast.LENGTH_SHORT).show()
+                                        openWeb(currentArticle.url, currentArticle.title)
+                                    }
+                                    isExtracting = false
+                                }
+                            },
+                            isExtracting = isExtracting
                         )
                     }
                 }
@@ -553,6 +656,69 @@ fun ReaderScreen(
                             }
                         }
                     }
+
+                    HorizontalDivider(color = colors.line.copy(alpha = 0.5f), thickness = 1.dp)
+
+                    // Typeface switcher row: Sans vs Serif
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Typeface",
+                            color = colors.mute,
+                            fontSize = 13.sp
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (!isSerif) colors.ink else Color.Transparent)
+                                    .border(1.dp, colors.ink, CircleShape)
+                                    .signalPressScale(0.96f) {
+                                        haptics.tick()
+                                        settingsManager.updateFontFamily("sans")
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Sans",
+                                    color = if (!isSerif) colors.bg else colors.ink,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (isSerif) colors.ink else Color.Transparent)
+                                    .border(1.dp, colors.ink, CircleShape)
+                                    .signalPressScale(0.96f) {
+                                        haptics.tick()
+                                        settingsManager.updateFontFamily("serif")
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Serif",
+                                    color = if (isSerif) colors.bg else colors.ink,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    fontFamily = FontFamily.Serif
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -635,6 +801,112 @@ fun ReaderScreen(
                         color = colors.mute,
                         fontSize = 13.sp
                     )
+                }
+            }
+        }
+
+        // Floating Braun Audio Player Dock (when playing/paused)
+        val isDarkActive = colors.bg == com.signal.reader.ui.theme.DarkBg
+        AnimatedVisibility(
+            visible = audioState.status != AudioPlaybackStatus.IDLE,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 74.dp, start = 16.dp, end = 16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(CircleShape)
+                    .background(if (isDarkActive) colors.card else colors.ink)
+                    .border(1.dp, colors.line, CircleShape)
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        // Play/Pause button
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(colors.accent)
+                                .signalPressScale(0.92f) {
+                                    haptics.tick()
+                                    audioPlayer.togglePlayPause(
+                                        currentArticle.title,
+                                        currentArticle.excerpt.ifBlank { currentArticle.title }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (audioState.status == AudioPlaybackStatus.PLAYING) "⏸" else "▶",
+                                color = Color.White,
+                                fontSize = 13.sp
+                            )
+                        }
+
+                        Text(
+                            text = if (audioState.status == AudioPlaybackStatus.PLAYING) "Reading aloud..." else "Paused",
+                            color = if (isDarkActive) colors.ink else colors.bg,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Speed button
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(colors.bg.copy(alpha = 0.2f))
+                                .clickable {
+                                    haptics.tick()
+                                    audioPlayer.cycleSpeed()
+                                }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "${audioState.speed}x",
+                                color = if (isDarkActive) colors.ink else colors.bg,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Close button
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clickable {
+                                    haptics.tick()
+                                    audioPlayer.stop()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "✕",
+                                color = if (isDarkActive) colors.mute else colors.bg.copy(alpha = 0.7f),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -890,6 +1162,7 @@ private fun appendHtmlNode(
 private fun RenderContentBlock(
     block: ContentBlock,
     fontSize: androidx.compose.ui.unit.TextUnit,
+    isSerif: Boolean = false,
     onImageClick: (url: String, caption: String?) -> Unit,
     onLinkClick: (url: String) -> Unit
 ) {
@@ -913,7 +1186,7 @@ private fun RenderContentBlock(
 
             Text(
                 text = annotated,
-                style = SignalTheme.typography.readerBody(fontSize),
+                style = SignalTheme.typography.readerBody(fontSize, isSerif),
                 color = colors.ink,
                 modifier = Modifier.padding(bottom = 18.dp)
             )
@@ -959,6 +1232,7 @@ private fun RenderContentBlock(
             Text(
                 text = block.text,
                 style = SignalTheme.typography.screenTitle,
+                fontFamily = if (isSerif) FontFamily.Serif else SignalTheme.typography.screenTitle.fontFamily,
                 fontSize = if (block.level <= 2) 20.sp else 18.sp,
                 color = colors.ink,
                 modifier = Modifier.padding(top = 22.dp, bottom = 10.dp)
@@ -979,7 +1253,7 @@ private fun RenderContentBlock(
                 Spacer(modifier = Modifier.width(14.dp))
                 Text(
                     text = block.text,
-                    style = SignalTheme.typography.readerBody(fontSize),
+                    style = SignalTheme.typography.readerBody(fontSize, isSerif),
                     fontStyle = FontStyle.Italic,
                     color = colors.ink,
                     lineHeight = 24.sp
@@ -1015,7 +1289,7 @@ private fun RenderContentBlock(
                         Text("—", color = colors.mute, fontSize = fontSize)
                         Text(
                             text = annotated,
-                            style = SignalTheme.typography.readerBody(fontSize),
+                            style = SignalTheme.typography.readerBody(fontSize, isSerif),
                             color = colors.ink
                         )
                     }
@@ -1027,7 +1301,9 @@ private fun RenderContentBlock(
 
 @Composable
 private fun ExcerptCta(
-    onReadFullClick: () -> Unit
+    onReadFullClick: () -> Unit,
+    onExtractClick: () -> Unit,
+    isExtracting: Boolean = false
 ) {
     val colors = SignalTheme.colors
 
@@ -1037,33 +1313,64 @@ private fun ExcerptCta(
             .padding(top = 16.dp),
         horizontalAlignment = Alignment.Start
     ) {
-        Box(
-            modifier = Modifier
-                .clip(CircleShape)
-                .background(colors.ink)
-                .signalPressScale(0.96f) { onReadFullClick() }
-                .padding(horizontal = 26.dp, vertical = 16.dp)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(colors.ink)
+                    .signalPressScale(0.96f) { onReadFullClick() }
+                    .padding(horizontal = 22.dp, vertical = 14.dp)
             ) {
-                Text(
-                    text = "Read full article",
-                    color = colors.bg,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "↗",
-                    color = colors.accent,
-                    fontSize = 18.sp
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Open site",
+                        color = colors.bg,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "↗",
+                        color = colors.accent,
+                        fontSize = 16.sp
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .border(1.dp, colors.ink, CircleShape)
+                    .signalPressScale(0.96f) {
+                        if (!isExtracting) onExtractClick()
+                    }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isExtracting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = colors.ink,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = "Extract in Stoa",
+                        color = colors.ink,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
 
         Text(
-            text = "This site only shares an excerpt in its feed. The full article opens inside the app.",
+            text = "This site only shares an excerpt in its feed. You can extract the full story clean or open the site.",
             color = colors.mute,
             fontSize = 13.sp,
             lineHeight = 18.sp,

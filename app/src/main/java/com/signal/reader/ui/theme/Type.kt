@@ -37,6 +37,14 @@ object SignalTypography {
         letterSpacing = (-0.02).sp
     )
 
+    fun readerTitle(isSerif: Boolean = false): TextStyle = TextStyle(
+        fontFamily = if (isSerif) FontFamily.Serif else ArchivoFontFamily,
+        fontWeight = if (isSerif) FontWeight.Bold else FontWeight.ExtraBold,
+        fontSize = 32.sp,
+        lineHeight = 34.sp,
+        letterSpacing = (-0.02).sp
+    )
+
     val rowHeadline = TextStyle(
         fontFamily = ArchivoFontFamily,
         fontWeight = FontWeight.Bold,
@@ -45,12 +53,12 @@ object SignalTypography {
         letterSpacing = (-0.01).sp
     )
 
-    fun readerBody(fontSize: TextUnit): TextStyle = TextStyle(
-        fontFamily = ArchivoFontFamily,
+    fun readerBody(fontSize: TextUnit, isSerif: Boolean = false): TextStyle = TextStyle(
+        fontFamily = if (isSerif) FontFamily.Serif else ArchivoFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = fontSize,
-        lineHeight = fontSize * 1.6f,
-        letterSpacing = 0.sp
+        lineHeight = fontSize * (if (isSerif) 1.65f else 1.6f),
+        letterSpacing = if (isSerif) 0.1.sp else 0.sp
     )
 
     val metaSource = TextStyle(

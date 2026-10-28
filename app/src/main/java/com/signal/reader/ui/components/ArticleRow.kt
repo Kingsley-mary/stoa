@@ -222,6 +222,12 @@ fun ArticleRow(
                                 color = colors.mute
                             )
 
+                            Text(
+                                text = TimeUtils.formatReadTime(article.fullContent, article.excerpt),
+                                style = SignalTheme.typography.metaTime,
+                                color = colors.mute
+                            )
+
                             if (article.saved) {
                                 Text(
                                     text = "Saved",

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -52,6 +53,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val app = application as SignalApplication
+        val initialArticleId = intent?.getLongExtra("article_id", -1L)?.takeIf { it > 0 }
 
         setContent {
             val settings by app.settingsManager.settingsFlow.collectAsState()
@@ -60,7 +62,8 @@ class MainActivity : ComponentActivity() {
                 SignalAppNav(
                     app = app,
                     isFirstLaunch = !settings.isFirstLaunchCompleted,
-                    isCompactLayout = settings.homeLayout == "compact"
+                    isCompactLayout = settings.homeLayout == "compact",
+                    initialArticleId = initialArticleId
                 )
             }
         }
@@ -71,7 +74,8 @@ class MainActivity : ComponentActivity() {
 fun SignalAppNav(
     app: SignalApplication,
     isFirstLaunch: Boolean,
-    isCompactLayout: Boolean
+    isCompactLayout: Boolean,
+    initialArticleId: Long? = null
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -93,6 +97,12 @@ fun SignalAppNav(
 
     val colors = SignalTheme.colors
     val startDestination = "splash"
+
+    LaunchedEffect(initialArticleId) {
+        if (initialArticleId != null && initialArticleId > 0) {
+            navController.navigate("reader/$initialArticleId")
+        }
+    }
 
     fun openWebBrowser(url: String, title: String? = null) {
         if (url.isBlank()) return

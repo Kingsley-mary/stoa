@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.asStateFlow
 data class SignalSettings(
     val theme: String = "auto", // "auto", "light", "dark"
     val textSizeIndex: Int = 1, // 0: 16sp, 1: 18sp, 2: 20sp, 3: 23sp
+    val fontFamily: String = "sans", // "sans", "serif"
+    val unreadOnlyFilter: Boolean = false,
     val homeLayout: String = "cards", // "cards", "compact"
     val backgroundRefresh: Boolean = true,
     val refreshIntervalMinutes: Long = 60,
@@ -31,6 +33,8 @@ class SettingsManager(context: Context) {
         return SignalSettings(
             theme = prefs.getString(KEY_THEME, "auto") ?: "auto",
             textSizeIndex = prefs.getInt(KEY_TEXT_SIZE, 1).coerceIn(0, 3),
+            fontFamily = prefs.getString(KEY_FONT_FAMILY, "sans") ?: "sans",
+            unreadOnlyFilter = prefs.getBoolean(KEY_UNREAD_ONLY, false),
             homeLayout = prefs.getString(KEY_LAYOUT, "cards") ?: "cards",
             backgroundRefresh = prefs.getBoolean(KEY_BG_REFRESH, true),
             refreshIntervalMinutes = prefs.getLong(KEY_REFRESH_INTERVAL, 60),
@@ -49,6 +53,16 @@ class SettingsManager(context: Context) {
         val safe = index.coerceIn(0, 3)
         prefs.edit().putInt(KEY_TEXT_SIZE, safe).apply()
         _settingsFlow.value = _settingsFlow.value.copy(textSizeIndex = safe)
+    }
+
+    fun updateFontFamily(fontFamily: String) {
+        prefs.edit().putString(KEY_FONT_FAMILY, fontFamily).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(fontFamily = fontFamily)
+    }
+
+    fun updateUnreadOnlyFilter(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_UNREAD_ONLY, enabled).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(unreadOnlyFilter = enabled)
     }
 
     fun updateHomeLayout(layout: String) {
@@ -99,6 +113,8 @@ class SettingsManager(context: Context) {
     companion object {
         private const val KEY_THEME = "theme"
         private const val KEY_TEXT_SIZE = "text_size_index"
+        private const val KEY_FONT_FAMILY = "font_family"
+        private const val KEY_UNREAD_ONLY = "unread_only_filter"
         private const val KEY_LAYOUT = "home_layout"
         private const val KEY_BG_REFRESH = "background_refresh"
         private const val KEY_REFRESH_INTERVAL = "refresh_interval_minutes"

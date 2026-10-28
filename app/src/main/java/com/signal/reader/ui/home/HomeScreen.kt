@@ -104,19 +104,23 @@ fun HomeScreen(
     val feedOffsetY = remember { Animatable(0f) }
     var shouldSlideHero by remember { mutableStateOf(false) }
 
-    // Filter stream by active chip
+    // Filter stream by active chip and sort Unread first
     val filteredArticles = remember(allArticles, selectedSourceId) {
-        if (selectedSourceId == null) {
+        val base = if (selectedSourceId == null) {
             allArticles
         } else {
             allArticles.filter { it.sourceId == selectedSourceId }
         }
+        base.sortedWith(compareBy<ArticleEntity> { it.read }.thenByDescending { it.publishedTime })
     }
 
-    // Hero rule: newest article with image in active set; fallback to newest as flat card
+    // Hero rule: newest unread article with image in active set; fallback to newest unread or newest with image
     val heroArticle: ArticleEntity? = remember(filteredArticles, isCompactLayout) {
         if (isCompactLayout || filteredArticles.isEmpty()) null
-        else filteredArticles.firstOrNull { !it.imageUrl.isNullOrBlank() } ?: filteredArticles.firstOrNull()
+        else filteredArticles.firstOrNull { !it.read && !it.imageUrl.isNullOrBlank() }
+            ?: filteredArticles.firstOrNull { !it.read }
+            ?: filteredArticles.firstOrNull { !it.imageUrl.isNullOrBlank() }
+            ?: filteredArticles.firstOrNull()
     }
 
     val streamArticles = remember(filteredArticles, heroArticle) {
@@ -277,6 +281,18 @@ fun HomeScreen(
 
                         // Stream items with 40ms stagger entrance
                         itemsIndexed(streamArticles, key = { _, item -> item.id }) { index, article ->
+                            val isFirstRead = article.read && (index == 0 || !streamArticles[index - 1].read)
+                            if (isFirstRead) {
+                                Column(modifier = Modifier.padding(top = 18.dp, bottom = 4.dp)) {
+                                    Text(
+                                        text = "EARLIER READ",
+                                        style = SignalTheme.typography.metaSource,
+                                        color = colors.mute,
+                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
+                                    )
+                                    androidx.compose.material3.HorizontalDivider(color = colors.line, thickness = 1.dp)
+                                }
+                            }
                             StaggeredItem(index = index + 1) {
                                 ArticleRow(
                                     article = article,

@@ -41,4 +41,10 @@ object TimeUtils {
         val words = content.split(Regex("\\s+")).filter { it.isNotBlank() }.size
         return maxOf(1, Math.ceil(words / 200.0).toInt())
     }
+
+    fun formatReadTime(content: String?, excerpt: String? = null): String {
+        val textToCount = if (!content.isNullOrBlank()) content else (excerpt ?: "")
+        val minutes = calculateReadTimeMinutes(textToCount)
+        return "$minutes min read"
+    }
 }
