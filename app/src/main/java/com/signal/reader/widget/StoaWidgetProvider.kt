@@ -53,8 +53,8 @@ class StoaWidgetProvider : AppWidgetProvider() {
             }
 
             val density = context.resources.displayMetrics.density
-            val initialW = (320 * density).roundToInt()
-            val initialH = (140 * density).roundToInt()
+            val initialW = (360 * density).roundToInt()
+            val initialH = (180 * density).roundToInt()
             val initialBitmap = renderWidgetCardBitmap(
                 widthPx = initialW,
                 heightPx = initialH,
@@ -139,25 +139,30 @@ class StoaWidgetProvider : AppWidgetProvider() {
 
                         // Compute widget target pixel dimensions for exact crisp rendering
                         val options = manager.getAppWidgetOptions(widgetId)
-                        val minWidthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
-                        val minHeightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
+                        val isPortrait = context.resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE
+                        val wDp = if (isPortrait) {
+                            options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 360).takeIf { it > 50 } ?: 360
+                        } else {
+                            options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 480).takeIf { it > 50 } ?: 480
+                        }
+                        val hDp = if (isPortrait) {
+                            options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 180).takeIf { it > 40 } ?: 180
+                        } else {
+                            options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110).takeIf { it > 40 } ?: 110
+                        }
                         val density = context.resources.displayMetrics.density
 
-                        val wDp = if (minWidthDp > 100) minWidthDp else 320
-                        val hDp = if (minHeightDp > 50) minHeightDp else 140
-
                         val widthPx = (wDp * density).roundToInt().coerceIn(400, 1400)
-                        val heightPx = (hDp * density).roundToInt().coerceIn(180, 800)
+                        val heightPx = (hDp * density).roundToInt().coerceIn(200, 900)
                         val cornerRadiusPx = 24f * density
                         val strokeWidthPx = (1f * density).coerceAtLeast(1f)
 
-                        // Load hero article image if article_image mode
+                        // Load hero article image if article_image mode - unconstrained size preserves natural aspect ratio
                         var heroBitmap: Bitmap? = null
                         if (effectiveBg == "article_image" && !heroArticle?.imageUrl.isNullOrBlank()) {
                             try {
                                 val req = ImageRequest.Builder(context)
                                     .data(heroArticle.imageUrl)
-                                    .size(widthPx, heightPx)
                                     .allowHardware(false)
                                     .build()
                                 val result = (Coil.imageLoader(context).execute(req) as? SuccessResult)?.drawable
@@ -308,18 +313,14 @@ class StoaWidgetProvider : AppWidgetProvider() {
                 canvas.save()
                 canvas.clipPath(path)
 
-                val scale: Float
-                val dx: Float
-                val dy: Float
-                if (heroImage.width * heightPx > widthPx * heroImage.height) {
-                    scale = heightPx.toFloat() / heroImage.height.toFloat()
-                    dx = (widthPx - heroImage.width * scale) * 0.5f
-                    dy = 0f
-                } else {
-                    scale = widthPx.toFloat() / heroImage.width.toFloat()
-                    dx = 0f
-                    dy = (heightPx - heroImage.height * scale) * 0.5f
-                }
+                // True uniform centerCrop: scales with identical scale factor in X and Y
+                val scale = maxOf(
+                    widthPx.toFloat() / heroImage.width.toFloat(),
+                    heightPx.toFloat() / heroImage.height.toFloat()
+                )
+                val dx = (widthPx - heroImage.width * scale) * 0.5f
+                val dy = (heightPx - heroImage.height * scale) * 0.5f
+
                 val matrix = Matrix().apply {
                     setScale(scale, scale)
                     postTranslate(dx, dy)
