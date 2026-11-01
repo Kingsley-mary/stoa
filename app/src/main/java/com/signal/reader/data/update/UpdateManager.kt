@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -71,9 +72,11 @@ class UpdateManager(
     // Default GitHub Releases API endpoint
     var updateManifestUrl: String = "https://api.github.com/repos/Kingsley-mary/stoa/releases/latest"
 
-    suspend fun checkForUpdates(customUrl: String? = null): UpdateState = withContext(Dispatchers.IO) {
+    suspend fun checkForUpdates(customUrl: String? = null, isSilent: Boolean = false): UpdateState = withContext(Dispatchers.IO) {
         val targetUrl = customUrl?.ifBlank { null } ?: updateManifestUrl
-        _updateState.value = UpdateState.Checking
+        if (!isSilent) {
+            _updateState.value = UpdateState.Checking
+        }
 
         try {
             val request = Request.Builder()
@@ -85,14 +88,14 @@ class UpdateManager(
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
                 val err = "Server responded with code ${response.code}"
-                _updateState.value = UpdateState.Error(err)
+                if (!isSilent) _updateState.value = UpdateState.Error(err)
                 return@withContext UpdateState.Error(err)
             }
 
             val bodyString = response.body?.string().orEmpty()
             if (bodyString.isBlank()) {
                 val err = "Empty response from update server"
-                _updateState.value = UpdateState.Error(err)
+                if (!isSilent) _updateState.value = UpdateState.Error(err)
                 return@withContext UpdateState.Error(err)
             }
 
@@ -127,7 +130,7 @@ class UpdateManager(
 
             if (apkUrl.isBlank()) {
                 val err = "No APK package found in update release."
-                _updateState.value = UpdateState.Error(err)
+                if (!isSilent) _updateState.value = UpdateState.Error(err)
                 return@withContext UpdateState.Error(err)
             }
 
@@ -148,12 +151,19 @@ class UpdateManager(
                 UpdateState.UpToDate
             }
 
-            _updateState.value = result
+            if (isNewer || !isSilent) {
+                _updateState.value = result
+            }
             result
+        } catch (e: CancellationException) {
+            if (!isSilent) _updateState.value = UpdateState.Idle
+            throw e
         } catch (e: Exception) {
             val err = e.localizedMessage ?: "Unable to check for updates."
             val state = UpdateState.Error(err)
-            _updateState.value = state
+            if (!isSilent) {
+                _updateState.value = state
+            }
             state
         }
     }
@@ -214,6 +224,9 @@ class UpdateManager(
             withContext(Dispatchers.Main) {
                 installApk(context, targetApk)
             }
+        } catch (e: CancellationException) {
+            _updateState.value = UpdateState.Idle
+            throw e
         } catch (e: Exception) {
             _updateState.value = UpdateState.Error(e.localizedMessage ?: "Download failed.")
         }

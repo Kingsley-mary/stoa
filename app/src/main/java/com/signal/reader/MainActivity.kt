@@ -161,7 +161,7 @@ fun SignalAppNav(
     var homeReselectTrigger by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
-        updateManager.checkForUpdates()
+        updateManager.checkForUpdates(isSilent = true)
     }
 
     LaunchedEffect(initialArticleId) {
@@ -634,7 +634,7 @@ fun SignalAppNav(
                     dismissedUpdateVersion = (updateState as UpdateState.Available).versionName
                 }
             )
-        } else if (updateState is UpdateState.Downloading || updateState is UpdateState.ReadyToInstall || updateState is UpdateState.Error) {
+        } else if (updateState is UpdateState.Downloading || updateState is UpdateState.ReadyToInstall) {
             UpdateDialog(
                 updateState = updateState,
                 updateManager = updateManager,

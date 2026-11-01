@@ -81,6 +81,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -300,11 +303,20 @@ fun ReaderScreen(
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.bg)
-    ) {
+    val view = LocalView.current
+    val customTextToolbar = remember(view) {
+        CustomTextToolbar(view) { quoteText ->
+            pendingShareQuote = quoteText
+            showShareSheet = true
+        }
+    }
+
+    CompositionLocalProvider(LocalTextToolbar provides customTextToolbar) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(colors.bg)
+        ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Sticky top header bar with BackChevron and reading progress bar matching design/reader-mockup.html
             Box(
@@ -484,15 +496,17 @@ fun ReaderScreen(
 
                 // Title with titleUp entrance animation (#rtitle)
                 item(key = "title") {
-                    Text(
-                        text = currentArticle.title.uppercase(),
-                        style = SignalTheme.typography.readerTitle,
-                        color = colors.ink,
-                        modifier = Modifier
-                            .padding(top = 22.dp, bottom = 22.dp)
-                            .offset { IntOffset(0, (titleOffsetY.value * density).roundToInt()) }
-                            .alpha(titleAlpha.value)
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = currentArticle.title.uppercase(),
+                            style = SignalTheme.typography.readerTitle,
+                            color = colors.ink,
+                            modifier = Modifier
+                                .padding(top = 22.dp, bottom = 22.dp)
+                                .offset { IntOffset(0, (titleOffsetY.value * density).roundToInt()) }
+                                .alpha(titleAlpha.value)
+                        )
+                    }
                 }
 
                 // Facts DL block (#rdl) with staggered entrance
@@ -970,6 +984,7 @@ fun ReaderScreen(
                 }
             )
         }
+    }
     }
 }
 

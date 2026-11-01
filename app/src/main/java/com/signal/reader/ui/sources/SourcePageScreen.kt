@@ -69,6 +69,7 @@ import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTactile
 import com.signal.reader.ui.theme.SignalTheme
+import com.signal.reader.ui.theme.signalPillButton
 import com.signal.reader.ui.theme.signalPressScale
 import com.signal.reader.ui.theme.signalTactileClick
 import kotlinx.coroutines.delay
@@ -163,14 +164,13 @@ fun SourcePageScreen(
             .fillMaxSize()
             .background(colors.bg)
     ) {
-        // Header with Back Chevron and Notification Bell
+        // Header with Back Chevron
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
@@ -182,66 +182,6 @@ fun SourcePageScreen(
                 contentAlignment = Alignment.Center
             ) {
                 BackChevron(color = colors.ink)
-            }
-
-            val currentSource = source
-            if (currentSource != null && currentSource.followed) {
-                val notifManager = remember { (context.applicationContext as com.signal.reader.SignalApplication).notificationManager }
-                val isSystemActive = remember(currentSource.id) { notifManager.isChannelEnabledInSystem(currentSource.id) }
-                val isAlertsActive = currentSource.notificationsEnabled && isSystemActive
-
-                val permissionLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestPermission()
-                ) { isGranted ->
-                    if (isGranted) {
-                        coroutineScope.launch {
-                            repository.setSourceNotificationsEnabled(currentSource.id, true)
-                            haptics.tick()
-                            statusNote = "Alerts enabled for ${currentSource.name}"
-                            Toast.makeText(context, "Alerts enabled for ${currentSource.name}", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .border(1.dp, if (isAlertsActive) colors.ink else colors.line, CircleShape)
-                        .signalTactileClick(
-                            targetScale = SignalTactile.IconPressScale,
-                            onClick = {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                                    androidx.core.content.ContextCompat.checkSelfPermission(
-                                        context,
-                                        android.Manifest.permission.POST_NOTIFICATIONS
-                                    ) != android.content.pm.PackageManager.PERMISSION_GRANTED
-                                ) {
-                                    permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                                } else {
-                                    coroutineScope.launch {
-                                        val newState = !currentSource.notificationsEnabled
-                                        repository.setSourceNotificationsEnabled(currentSource.id, newState)
-                                        haptics.tick()
-                                        val msg = if (newState) {
-                                            "Alerts enabled for ${currentSource.name}"
-                                        } else {
-                                            "Alerts muted for ${currentSource.name}"
-                                        }
-                                        statusNote = msg
-                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    BellIcon(
-                        color = if (isAlertsActive) colors.ink else colors.mute,
-                        enabled = isAlertsActive,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
             }
         }
 
@@ -354,32 +294,32 @@ fun SourcePageScreen(
                         }
                     }
 
-                    // Action buttons (.acts: Following/Follow, Mute/Muted)
+                    // Action buttons (.acts: Following/Follow, Mute/Muted, Alerts)
                     Row(
                         modifier = Modifier.padding(top = 22.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Follow / Following pill
                         val isFollowed = currentSource.followed
                         Box(
                             modifier = Modifier
-                                .clip(CircleShape)
-                                .background(if (!isFollowed) colors.ink else colors.bg)
-                                .border(1.dp, colors.ink, CircleShape)
-                                .signalPressScale(0.96f)
-                                .clickable {
-                                    haptics.tick()
-                                    if (isFollowed) {
-                                        showUnfollowConfirm = true
-                                    } else {
-                                        coroutineScope.launch {
-                                            repository.setFollowed(currentSource.id, true)
-                                            repository.refreshSource(currentSource.id)
-                                            statusNote = null
+                                .signalPillButton(
+                                    backgroundColor = if (!isFollowed) colors.ink else colors.bg,
+                                    borderColor = colors.ink,
+                                    onClick = {
+                                        if (isFollowed) {
+                                            showUnfollowConfirm = true
+                                        } else {
+                                            coroutineScope.launch {
+                                                repository.setFollowed(currentSource.id, true)
+                                                repository.refreshSource(currentSource.id)
+                                                statusNote = null
+                                            }
                                         }
                                     }
-                                }
-                                .padding(horizontal = 22.dp, vertical = 11.dp)
+                                )
+                                .padding(horizontal = 20.dp, vertical = 11.dp)
                         ) {
                             Text(
                                 text = if (isFollowed) "Following" else "Follow",
@@ -393,21 +333,20 @@ fun SourcePageScreen(
                         val isMuted = currentSource.muted
                         Box(
                             modifier = Modifier
-                                .clip(CircleShape)
-                                .background(if (isMuted) colors.ink else colors.bg)
-                                .border(1.dp, colors.ink, CircleShape)
-                                .signalPressScale(0.96f)
-                                .clickable {
-                                    haptics.tick()
-                                    coroutineScope.launch {
-                                        val newMuted = !isMuted
-                                        repository.setMuted(currentSource.id, newMuted)
-                                        statusNote = if (newMuted) {
-                                            "Muted. New articles from this source won’t appear on Home."
-                                        } else null
+                                .signalPillButton(
+                                    backgroundColor = if (isMuted) colors.ink else colors.bg,
+                                    borderColor = colors.ink,
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            val newMuted = !isMuted
+                                            repository.setMuted(currentSource.id, newMuted)
+                                            statusNote = if (newMuted) {
+                                                "Muted. New articles from this source won’t appear on Home."
+                                            } else null
+                                        }
                                     }
-                                }
-                                .padding(horizontal = 22.dp, vertical = 11.dp)
+                                )
+                                .padding(horizontal = 20.dp, vertical = 11.dp)
                         ) {
                             Text(
                                 text = if (isMuted) "Muted" else "Mute",
@@ -415,6 +354,75 @@ fun SourcePageScreen(
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
                             )
+                        }
+
+                        // Alerts pill right beside Mute (only shown when followed)
+                        if (isFollowed) {
+                            val notifManager = remember { (context.applicationContext as com.signal.reader.SignalApplication).notificationManager }
+                            val isSystemActive = remember(currentSource.id) { notifManager.isChannelEnabledInSystem(currentSource.id) }
+                            val isAlertsActive = currentSource.notificationsEnabled && isSystemActive
+
+                            val permissionLauncher = rememberLauncherForActivityResult(
+                                ActivityResultContracts.RequestPermission()
+                            ) { isGranted ->
+                                if (isGranted) {
+                                    coroutineScope.launch {
+                                        repository.setSourceNotificationsEnabled(currentSource.id, true)
+                                        val msg = "Alerts enabled for ${currentSource.name}"
+                                        statusNote = msg
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .signalPillButton(
+                                        backgroundColor = if (isAlertsActive) colors.ink else colors.bg,
+                                        borderColor = colors.ink,
+                                        onClick = {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                                androidx.core.content.ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    android.Manifest.permission.POST_NOTIFICATIONS
+                                                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                            ) {
+                                                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                            } else {
+                                                coroutineScope.launch {
+                                                    val newState = !currentSource.notificationsEnabled
+                                                    repository.setSourceNotificationsEnabled(currentSource.id, newState)
+                                                    val msg = if (newState) {
+                                                        "Alerts enabled for ${currentSource.name}"
+                                                    } else {
+                                                        "Alerts muted for ${currentSource.name}"
+                                                    }
+                                                    statusNote = msg
+                                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 11.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    BellIcon(
+                                        color = if (isAlertsActive) colors.bg else colors.ink,
+                                        enabled = isAlertsActive,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = if (isAlertsActive) "Alerts" else "Alerts off",
+                                        color = if (isAlertsActive) colors.bg else colors.ink,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
                         }
                     }
 

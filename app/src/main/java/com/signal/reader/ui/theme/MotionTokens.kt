@@ -8,21 +8,27 @@ import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 
 object SignalMotion {
     // Exact Bezier Curves from mockups:
@@ -127,6 +133,29 @@ fun Modifier.signalTactileClick(
             onClick = onClick
         )
 }
+
+/**
+ * Design token for Stoa's tactile pill buttons.
+ * Guarantees correct modifier ordering: scales whole element on press with spring physics,
+ * renders background shape, and applies single crisp 1dp hairline border on top.
+ * Prevents double-hairline artifacts and hairline disappearing during press.
+ */
+fun Modifier.signalPillButton(
+    backgroundColor: Color,
+    borderColor: Color,
+    targetScale: Float = SignalTactile.ButtonPressScale,
+    shape: Shape = CircleShape,
+    borderWidth: Dp = 1.dp,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+): Modifier = this
+    .signalTactileClick(
+        targetScale = targetScale,
+        enabled = enabled,
+        onClick = onClick
+    )
+    .background(backgroundColor, shape)
+    .border(borderWidth, borderColor, shape)
 
 /**
  * Scale on press effect matching mockup with tactile haptic tick.

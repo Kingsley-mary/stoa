@@ -84,6 +84,7 @@ import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTactile
 import com.signal.reader.ui.theme.SignalTheme
+import com.signal.reader.ui.theme.signalPillButton
 import com.signal.reader.ui.theme.signalPressScale
 import com.signal.reader.ui.theme.signalTactileClick
 import kotlinx.coroutines.delay
@@ -503,11 +504,9 @@ fun HomeScreen(
         ) {
             Box(
                 modifier = Modifier
-                    .clip(CircleShape)
-                    .background(colors.bg)
-                    .border(1.dp, colors.ink, CircleShape)
-                    .signalTactileClick(
-                        targetScale = SignalTactile.ButtonPressScale,
+                    .signalPillButton(
+                        backgroundColor = colors.bg,
+                        borderColor = colors.ink,
                         onClick = {
                             jumpToReadAction?.invoke()
                         }

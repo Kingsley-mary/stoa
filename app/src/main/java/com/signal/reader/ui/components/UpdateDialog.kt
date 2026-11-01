@@ -43,6 +43,7 @@ import com.signal.reader.data.update.UpdateState
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTactile
 import com.signal.reader.ui.theme.SignalTheme
+import com.signal.reader.ui.theme.signalPillButton
 import com.signal.reader.ui.theme.signalTactileClick
 import kotlinx.coroutines.launch
 
@@ -58,8 +59,7 @@ fun UpdateDialog(
 
     val isVisible = updateState is UpdateState.Available ||
             updateState is UpdateState.Downloading ||
-            updateState is UpdateState.ReadyToInstall ||
-            updateState is UpdateState.Error
+            updateState is UpdateState.ReadyToInstall
 
     if (!isVisible) return
 
@@ -103,22 +103,20 @@ fun UpdateDialog(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Changelog container
+                        // Changelog container with rich Markdown formatting
                         if (updateState.changelog.isNotBlank()) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(max = 180.dp)
+                                    .heightIn(max = 220.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(colors.bg)
                                     .padding(14.dp)
                                     .verticalScroll(rememberScrollState())
                             ) {
-                                Text(
-                                    text = updateState.changelog,
-                                    fontSize = 13.sp,
-                                    lineHeight = 19.sp,
-                                    color = colors.ink
+                                MarkdownContent(
+                                    markdown = updateState.changelog,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                             Spacer(modifier = Modifier.height(20.dp))
@@ -134,10 +132,9 @@ fun UpdateDialog(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(CircleShape)
-                                    .border(1.dp, colors.line, CircleShape)
-                                    .signalTactileClick(
-                                        targetScale = SignalTactile.ButtonPressScale,
+                                    .signalPillButton(
+                                        backgroundColor = colors.card,
+                                        borderColor = colors.line,
                                         onClick = onDismiss
                                     )
                                     .padding(vertical = 11.dp),
@@ -155,10 +152,9 @@ fun UpdateDialog(
                             Box(
                                 modifier = Modifier
                                     .weight(1.3f)
-                                    .clip(CircleShape)
-                                    .background(colors.ink)
-                                    .signalTactileClick(
-                                        targetScale = SignalTactile.ButtonPressScale,
+                                    .signalPillButton(
+                                        backgroundColor = colors.ink,
+                                        borderColor = colors.ink,
                                         onClick = {
                                             coroutineScope.launch {
                                                 updateManager.downloadAndInstall(updateState)

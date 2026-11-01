@@ -84,9 +84,11 @@ import com.signal.reader.data.update.UpdateState
 import com.signal.reader.ui.components.BackChevron
 import com.signal.reader.ui.components.SourceLogo
 import com.signal.reader.ui.components.StaggeredItem
+import com.signal.reader.ui.components.WhatsNewDialog
 import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
+import com.signal.reader.ui.theme.signalPillButton
 import com.signal.reader.ui.theme.signalPressScale
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -112,6 +114,7 @@ fun SettingsScreen(
     val fontSizes = listOf(16.sp, 18.sp, 20.sp, 23.sp)
     var showOpenLinksDialog by remember { mutableStateOf(false) }
     var showPublicationAlertsDialog by remember { mutableStateOf(false) }
+    var showWhatsNewDialog by remember { mutableStateOf(false) }
 
     val notifManager = remember { (context.applicationContext as com.signal.reader.SignalApplication).notificationManager }
     val followedSources by repository.getFollowedSourcesFlow().collectAsState(initial = emptyList())
@@ -574,6 +577,12 @@ fun SettingsScreen(
                     Column {
                         SettingsSectionHeader("About")
 
+                        SettingsActionRow(
+                            label = "What’s new in Stoa",
+                            sublabel = "Release notes for v1.4.10, v1.4.9 & v1.4.8",
+                            onClick = { showWhatsNewDialog = true }
+                        )
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -747,19 +756,21 @@ fun SettingsScreen(
                 confirmButton = {
                     Box(
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .background(colors.ink)
-                            .signalPressScale(0.96f) {
-                                showOpenLinksDialog = false
-                                try {
-                                    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        Intent(Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS, Uri.parse("package:${context.packageName}"))
-                                    } else {
-                                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
-                                    }
-                                    context.startActivity(intent)
-                                } catch (_: Exception) {}
-                            }
+                            .signalPillButton(
+                                backgroundColor = colors.ink,
+                                borderColor = colors.ink,
+                                onClick = {
+                                    showOpenLinksDialog = false
+                                    try {
+                                        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                            Intent(Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS, Uri.parse("package:${context.packageName}"))
+                                        } else {
+                                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                }
+                            )
                             .padding(horizontal = 20.dp, vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -769,8 +780,11 @@ fun SettingsScreen(
                 dismissButton = {
                     Box(
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .signalPressScale(0.96f) { showOpenLinksDialog = false }
+                            .signalPillButton(
+                                backgroundColor = colors.bg,
+                                borderColor = colors.line,
+                                onClick = { showOpenLinksDialog = false }
+                            )
                             .padding(horizontal = 16.dp, vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -919,11 +933,13 @@ fun SettingsScreen(
                 confirmButton = {
                     Box(
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .background(colors.ink)
-                            .signalPressScale(0.96f) {
-                                showPublicationAlertsDialog = false
-                            }
+                            .signalPillButton(
+                                backgroundColor = colors.ink,
+                                borderColor = colors.ink,
+                                onClick = {
+                                    showPublicationAlertsDialog = false
+                                }
+                            )
                             .padding(horizontal = 20.dp, vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -936,6 +952,10 @@ fun SettingsScreen(
                     }
                 }
             )
+        }
+
+        if (showWhatsNewDialog) {
+            WhatsNewDialog(onDismiss = { showWhatsNewDialog = false })
         }
     }
 }
