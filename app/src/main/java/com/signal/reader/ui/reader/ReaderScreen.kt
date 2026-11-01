@@ -31,6 +31,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -690,35 +691,30 @@ fun ReaderScreen(
                                 else -> isSystemDark
                             }
 
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(colors.bg)
-                                    .border(1.dp, colors.ink, CircleShape)
-                                    .signalPressScale(0.96f) {
-                                        haptics.tick()
-                                        settingsManager.updateTheme(if (isDarkActive) "light" else "dark")
-                                    }
-                                    .padding(horizontal = 14.dp, vertical = 7.dp),
-                                contentAlignment = Alignment.Center
+                            AaPillButton(
+                                onClick = {
+                                    haptics.tick()
+                                    settingsManager.updateTheme(if (isDarkActive) "light" else "dark")
+                                }
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                                 ) {
                                     if (isDarkActive) {
-                                        MoonIcon(color = colors.ink, modifier = Modifier.size(13.dp))
+                                        MoonIcon(color = SignalTheme.colors.ink, modifier = Modifier.size(13.dp))
                                         Text(
                                             text = "Dark",
-                                            color = colors.ink,
+                                            color = SignalTheme.colors.ink,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Medium
                                         )
                                     } else {
-                                        SunIcon(color = colors.ink, modifier = Modifier.size(13.dp))
+                                        SunIcon(color = SignalTheme.colors.ink, modifier = Modifier.size(13.dp))
                                         Text(
                                             text = "Light",
-                                            color = colors.ink,
+                                            color = SignalTheme.colors.ink,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Medium
                                         )
@@ -727,25 +723,24 @@ fun ReaderScreen(
                             }
 
                             // 2. Single Typeface Switcher Button (switches between Sans and Serif)
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(colors.bg)
-                                    .border(1.dp, colors.ink, CircleShape)
-                                    .signalPressScale(0.96f) {
-                                        haptics.tick()
-                                        settingsManager.updateFontFamily(if (isSerif) "sans" else "serif")
-                                    }
-                                    .padding(horizontal = 14.dp, vertical = 7.dp),
-                                contentAlignment = Alignment.Center
+                            AaPillButton(
+                                onClick = {
+                                    haptics.tick()
+                                    settingsManager.updateFontFamily(if (isSerif) "sans" else "serif")
+                                }
                             ) {
-                                Text(
-                                    text = if (isSerif) "Aa Serif" else "Aa Sans",
-                                    color = colors.ink,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    fontFamily = if (isSerif) FontFamily.Serif else SignalTheme.typography.screenTitle.fontFamily
-                                )
+                                Box(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (isSerif) "Aa Serif" else "Aa Sans",
+                                        color = SignalTheme.colors.ink,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        fontFamily = if (isSerif) FontFamily.Serif else SignalTheme.typography.screenTitle.fontFamily
+                                    )
+                                }
                             }
                         }
                     }
@@ -2428,30 +2423,59 @@ private fun ExcerptCta(
 }
 
 @Composable
+private fun AaPillButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val colors = SignalTheme.colors
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && enabled) 0.96f else 1.0f,
+        animationSpec = SignalMotion.PressSpringSpec,
+        label = "aaPillScale"
+    )
+
+    Box(
+        modifier = modifier
+            .alpha(if (enabled) 1.0f else 0.35f)
+            .scale(scale)
+            .border(1.dp, colors.ink, CircleShape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
+@Composable
 private fun PillButton(
     text: String,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val colors = SignalTheme.colors
-
-    Box(
-        modifier = Modifier
-            .alpha(if (enabled) 1.0f else 0.35f)
-            .clip(CircleShape)
-            .background(colors.bg)
-            .border(1.dp, colors.ink, CircleShape)
-            .signalPressScale(if (enabled) 0.96f else 1.0f) {
-                if (enabled) onClick()
-            }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
+    AaPillButton(
+        onClick = onClick,
+        enabled = enabled
     ) {
-        Text(
-            text = text,
-            color = colors.ink,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium
-        )
+        Box(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = SignalTheme.colors.ink,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
     }
 }
