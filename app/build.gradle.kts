@@ -13,8 +13,8 @@ android {
         applicationId = "com.signal.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.4.7"
+        versionCode = 13
+        versionName = "1.4.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -118,7 +118,7 @@ val syncCatalogIntentFilters = tasks.register("syncCatalogIntentFilters") {
 
         val filterBuilder = StringBuilder()
         filterBuilder.append("<!-- BEGIN GENERATED CATALOG DOMAIN FILTERS -->\n")
-        filterBuilder.append("            <intent-filter android:autoVerify=\"true\">\n")
+        filterBuilder.append("            <intent-filter>\n")
         filterBuilder.append("                <action android:name=\"android.intent.action.VIEW\" />\n")
         filterBuilder.append("                <category android:name=\"android.intent.category.DEFAULT\" />\n")
         filterBuilder.append("                <category android:name=\"android.intent.category.BROWSABLE\" />\n")

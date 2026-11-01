@@ -11,6 +11,9 @@ import com.signal.reader.data.local.SignalDatabase
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.data.sync.RefreshWorker
 import com.signal.reader.data.update.UpdateManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class SignalApplication : Application(), ImageLoaderFactory {
 
@@ -42,10 +45,31 @@ class SignalApplication : Application(), ImageLoaderFactory {
             wifiOnly = settings.wifiOnly,
             enabled = settings.backgroundRefresh
         )
+
+        CoroutineScope(Dispatchers.IO).launch {
+            repository.resolveMissingArticleImages(30)
+        }
     }
 
     override fun newImageLoader(): ImageLoader {
+        val okHttpClient = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                val req = chain.request()
+                val host = req.url.host
+                val builder = req.newBuilder()
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36 StoaReader/1.4")
+                    .header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+                if (req.header("Referer") == null) {
+                    builder.header("Referer", "${req.url.scheme}://$host/")
+                }
+                chain.proceed(builder.build())
+            }
+            .build()
+
         return ImageLoader.Builder(this)
+            .okHttpClient(okHttpClient)
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(0.25)

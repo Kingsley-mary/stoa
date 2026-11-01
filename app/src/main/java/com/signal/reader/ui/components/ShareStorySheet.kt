@@ -1,6 +1,5 @@
 package com.signal.reader.ui.components
 
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
@@ -52,6 +51,7 @@ import com.signal.reader.ui.theme.signalPressScale
 fun ShareStorySheet(
     article: ArticleEntity,
     paragraphs: List<String>,
+    initialQuote: String? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -59,20 +59,9 @@ fun ShareStorySheet(
     val haptics = rememberSignalHaptics()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Check clipboard for recent text copied from article
-    val clipboardText = remember {
-        try {
-            val clipManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            val item = clipManager?.primaryClip?.getItemAt(0)?.text?.toString()
-            if (!item.isNullOrBlank() && item.length > 5) item.trim() else null
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    var selectedQuote by remember {
+    var selectedQuote by remember(initialQuote) {
         mutableStateOf(
-            clipboardText
+            initialQuote?.trim()?.ifBlank { null }
                 ?: paragraphs.firstOrNull { it.length > 30 }
                 ?: article.excerpt.ifBlank { article.title }
         )
@@ -253,33 +242,6 @@ fun ShareStorySheet(
             }
 
             Spacer(modifier = Modifier.height(14.dp))
-
-            // Use Copied Text button if available
-            if (!clipboardText.isNullOrBlank() && clipboardText != selectedQuote) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(CircleShape)
-                        .border(1.dp, colors.accent, CircleShape)
-                        .background(colors.accent.copy(alpha = 0.08f))
-                        .signalPressScale(0.96f) {
-                            haptics.tick()
-                            selectedQuote = clipboardText
-                        }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Use copied text: \"${clipboardText.take(30)}...\"",
-                        color = colors.accent,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-            }
 
             // Paragraph excerpt chips to easily select passages
             if (paragraphs.isNotEmpty()) {

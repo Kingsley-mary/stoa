@@ -53,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,8 +82,10 @@ import com.signal.reader.ui.components.SourceChips
 import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
+import com.signal.reader.ui.theme.SignalTactile
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
+import com.signal.reader.ui.theme.signalTactileClick
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -98,6 +101,7 @@ fun HomeScreen(
     onAddSourcesClick: () -> Unit,
     settingsManager: SettingsManager? = null,
     isCompactLayout: Boolean = false,
+    homeReselectTrigger: Int = 0,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
@@ -210,9 +214,31 @@ fun HomeScreen(
         } else null
     }
 
-    val showJumpToRead by remember(targetReadListIndex, listState) {
+    var isScrollingDown by remember { mutableStateOf(false) }
+    var lastItemIndex by remember { mutableIntStateOf(0) }
+    var lastScrollOffset by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            val currentIndex = listState.firstVisibleItemIndex
+            val currentOffset = listState.firstVisibleItemScrollOffset
+            if (currentIndex > lastItemIndex || (currentIndex == lastItemIndex && currentOffset > lastScrollOffset + 10)) {
+                isScrollingDown = true
+            } else if (currentIndex < lastItemIndex || (currentIndex == lastItemIndex && currentOffset < lastScrollOffset - 10)) {
+                isScrollingDown = false
+            }
+            lastItemIndex = currentIndex
+            lastScrollOffset = currentOffset
+        } else {
+            isScrollingDown = false
+        }
+    }
+
+    val showJumpToRead by remember(targetReadListIndex, listState, isScrollingDown) {
         derivedStateOf {
-            targetReadListIndex > 0 && listState.firstVisibleItemIndex < targetReadListIndex - 1
+            targetReadListIndex > 0 &&
+                    listState.firstVisibleItemIndex < targetReadListIndex - 1 &&
+                    !isScrollingDown
         }
     }
 
@@ -256,6 +282,14 @@ fun HomeScreen(
             haptics.pop()
             delay(1800)
             toastMessage = null
+        }
+    }
+
+    LaunchedEffect(homeReselectTrigger) {
+        if (homeReselectTrigger > 0) {
+            haptics.tick()
+            listState.animateScrollToItem(0)
+            triggerRefresh()
         }
     }
 
@@ -452,46 +486,49 @@ fun HomeScreen(
             }
         }
 
-        // Floating Jump to Earlier Read Pill
+        // Floating Jump to Earlier Read Pill (Approach C: discreet bottom-right pill)
         AnimatedVisibility(
             visible = showJumpToRead,
             enter = fadeIn(tween(200)) + slideInVertically(
-                initialOffsetY = { it / 2 },
+                initialOffsetY = { it },
                 animationSpec = SignalMotion.easeTween(250)
             ),
             exit = fadeOut(tween(150)) + slideOutVertically(
-                targetOffsetY = { it / 2 },
+                targetOffsetY = { it },
                 animationSpec = SignalMotion.easeTween(200)
             ),
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp)
+                .align(Alignment.BottomEnd)
+                .padding(end = 20.dp, bottom = 16.dp)
         ) {
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(colors.bg)
                     .border(1.dp, colors.ink, CircleShape)
-                    .signalPressScale(0.96f) {
-                        jumpToReadAction?.invoke()
-                    }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .signalTactileClick(
+                        targetScale = SignalTactile.ButtonPressScale,
+                        onClick = {
+                            jumpToReadAction?.invoke()
+                        }
+                    )
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Text(
                         text = "Earlier read",
                         color = colors.ink,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
                     Text(
                         text = "↓",
                         color = colors.ink,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }

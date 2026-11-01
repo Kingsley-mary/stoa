@@ -26,9 +26,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -36,9 +41,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.signal.reader.data.update.UpdateState
 import com.signal.reader.ui.browser.BrowserScreen
 import com.signal.reader.ui.components.SignalBottomBar
 import com.signal.reader.ui.components.SignalTab
+import com.signal.reader.ui.components.UpdateDialog
 import com.signal.reader.ui.home.HomeScreen
 import com.signal.reader.ui.onboarding.InterestsOnboardingScreen
 import com.signal.reader.ui.reader.ReaderScreen
@@ -120,6 +127,17 @@ fun SignalAppNav(
     val colors = SignalTheme.colors
     val startDestination = "splash"
 
+    val context = LocalContext.current
+    val app = context.applicationContext as com.signal.reader.SignalApplication
+    val updateManager = remember { app.updateManager }
+    val updateState by updateManager.updateState.collectAsState()
+    var dismissedUpdateVersion by rememberSaveable { mutableStateOf<String?>(null) }
+    var homeReselectTrigger by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        updateManager.checkForUpdates()
+    }
+
     LaunchedEffect(initialArticleId) {
         if (initialArticleId != null && initialArticleId > 0) {
             navController.navigate("reader/$initialArticleId")
@@ -157,17 +175,21 @@ fun SignalAppNav(
                 SignalBottomBar(
                     currentTab = currentTab,
                     onTabSelected = { tab ->
-                        val targetRoute = when (tab) {
-                            SignalTab.HOME -> "home"
-                            SignalTab.SAVED -> "saved"
-                            SignalTab.SOURCES -> "sources"
-                        }
-                        navController.navigate(targetRoute) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
+                        if (tab == currentTab && tab == SignalTab.HOME) {
+                            homeReselectTrigger++
+                        } else {
+                            val targetRoute = when (tab) {
+                                SignalTab.HOME -> "home"
+                                SignalTab.SAVED -> "saved"
+                                SignalTab.SOURCES -> "sources"
                             }
-                            launchSingleTop = true
-                            restoreState = true
+                            navController.navigate(targetRoute) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         }
                     }
                 )
@@ -282,6 +304,7 @@ fun SignalAppNav(
                         HomeScreen(
                             repository = app.repository,
                             isCompactLayout = isCompactLayout,
+                            homeReselectTrigger = homeReselectTrigger,
                             onArticleClick = { articleId ->
                                 navController.navigate("reader/$articleId")
                             },
@@ -572,6 +595,25 @@ fun SignalAppNav(
                     }
                 }
             }
+        }
+
+        // Centered Animated Update Dialog (auto-detected on launch or via manual trigger)
+        if (updateState is UpdateState.Available && (updateState as UpdateState.Available).versionName != dismissedUpdateVersion) {
+            UpdateDialog(
+                updateState = updateState,
+                updateManager = updateManager,
+                onDismiss = {
+                    dismissedUpdateVersion = (updateState as UpdateState.Available).versionName
+                }
+            )
+        } else if (updateState is UpdateState.Downloading || updateState is UpdateState.ReadyToInstall || updateState is UpdateState.Error) {
+            UpdateDialog(
+                updateState = updateState,
+                updateManager = updateManager,
+                onDismiss = {
+                    updateManager.resetState()
+                }
+            )
         }
     }
 }

@@ -20,6 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 
 object SignalMotion {
     // Exact Bezier Curves from mockups:
@@ -78,22 +81,73 @@ object SignalMotion {
     )
 }
 
+object SignalTactile {
+    // Standard tactile scale design tokens
+    const val ButtonPressScale = 0.96f
+    const val SmallButtonPressScale = 0.94f
+    const val CardPressScale = 0.985f
+    const val IconPressScale = 0.92f
+
+    val PressSpring = spring<Float>(
+        dampingRatio = 0.62f,
+        stiffness = 550f
+    )
+}
+
 /**
- * Scale on press effect matching mockup:
- * button:active -> scale(.96)
- * thumb:active -> scale(.94)
- * card:active -> scale(.97)
+ * Consistent tactile press animation with spring physics and subtle haptic tick.
+ */
+fun Modifier.signalTactileClick(
+    targetScale: Float = SignalTactile.ButtonPressScale,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+): Modifier = composed {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val haptic = LocalHapticFeedback.current
+
+    LaunchedEffect(isPressed) {
+        if (isPressed && enabled) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && enabled) targetScale else 1.0f,
+        animationSpec = SignalTactile.PressSpring,
+        label = "tactileScale"
+    )
+
+    this
+        .scale(scale)
+        .clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            enabled = enabled,
+            onClick = onClick
+        )
+}
+
+/**
+ * Scale on press effect matching mockup with tactile haptic tick.
  */
 fun Modifier.signalPressScale(
-    targetScale: Float = 0.96f,
+    targetScale: Float = SignalTactile.ButtonPressScale,
     onClick: (() -> Unit)? = null
 ): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val haptic = LocalHapticFeedback.current
+
+    LaunchedEffect(isPressed) {
+        if (isPressed && onClick != null) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) targetScale else 1.0f,
-        animationSpec = SignalMotion.PressSpringSpec,
+        animationSpec = SignalTactile.PressSpring,
         label = "pressScale"
     )
 

@@ -67,6 +67,12 @@ object ImageResolver {
                 .replace(Regex("""([?&])resize=\d+,\d+"""), "$1resize=1600,1067")
         }
 
+        // Creative Boom CDN: upgrade medium/small to large webp
+        if (url.contains("media.creativeboom.com")) {
+            url = url.replace("-medium.webp", "-large.webp")
+                .replace("-small.webp", "-large.webp")
+        }
+
         return url
     }
 
@@ -90,12 +96,25 @@ object ImageResolver {
         return resolveHighRes(sorted.first().url)
     }
 
+    private val ytEmbedRegex = Regex("""(?:youtube(?:-nocookie)?\.com/(?:embed/|v/|watch\?v=)|youtu\.be/)([a-zA-Z0-9_-]{11})""", RegexOption.IGNORE_CASE)
+
     /**
-     * Extracts the highest quality image from an HTML Document, inspecting srcset and data-attributes.
+     * Extracts the highest quality image from an HTML Document, inspecting picture/srcset,
+     * img tags, and embedded video posters (e.g. YouTube).
      */
     fun extractBestImageFromHtml(doc: Document): String? {
-        val imgElements = doc.select("img")
+        // 1. Picture source tags
+        val pictureSources = doc.select("picture source[srcset]")
+        for (source in pictureSources) {
+            val srcset = source.attr("srcset")
+            val bestUrl = extractHighestResFromSrcset(srcset)
+            if (!bestUrl.isNullOrBlank() && !isTrackingUrl(bestUrl)) {
+                return resolveHighRes(bestUrl)
+            }
+        }
 
+        // 2. Standard <img> elements
+        val imgElements = doc.select("img")
         for (el in imgElements) {
             val candidate = extractBestImageUrlFromElement(el)
             if (candidate != null && !isTrackingUrl(candidate)) {
@@ -103,6 +122,51 @@ object ImageResolver {
             }
         }
 
+        // 3. Embedded video iframes / objects (e.g. YouTube trailers/interviews)
+        val iframes = doc.select("iframe[src], embed[src]")
+        for (iframe in iframes) {
+            val src = iframe.attr("src")
+            val videoThumb = extractVideoThumbnail(src)
+            if (!videoThumb.isNullOrBlank()) {
+                return videoThumb
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * Extracts a high-res video thumbnail from video embeds like YouTube.
+     */
+    fun extractVideoThumbnail(src: String?): String? {
+        if (src.isNullOrBlank()) return null
+        val match = ytEmbedRegex.find(src)
+        if (match != null) {
+            val videoId = match.groupValues[1]
+            return "https://img.youtube.com/vi/$videoId/maxresdefault.jpg"
+        }
+        return null
+    }
+
+    /**
+     * Extracts OpenGraph or Twitter Card image from HTML document.
+     */
+    fun extractOpenGraphImage(doc: Document): String? {
+        val ogSelectors = listOf(
+            "meta[property=og:image:secure_url]",
+            "meta[property=og:image]",
+            "meta[name=og:image]",
+            "meta[name=twitter:image]",
+            "meta[name=twitter:image:src]",
+            "meta[property=twitter:image]"
+        )
+
+        for (selector in ogSelectors) {
+            val content = doc.select(selector).attr("content").trim()
+            if (content.isNotBlank() && !content.startsWith("data:") && !isTrackingUrl(content)) {
+                return resolveHighRes(content)
+            }
+        }
         return null
     }
 

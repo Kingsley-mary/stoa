@@ -3,6 +3,7 @@ package com.signal.reader.data.repository
 import com.signal.reader.data.feed.DiscoveryResult
 import com.signal.reader.data.feed.FeedDiscovery
 import com.signal.reader.data.feed.FeedFetcher
+import com.signal.reader.data.feed.ImageResolver
 import com.signal.reader.data.feed.ParsedArticle
 import com.signal.reader.data.feed.StarterSource
 import com.signal.reader.data.feed.StarterSources
@@ -10,6 +11,8 @@ import com.signal.reader.data.local.SignalDatabase
 import com.signal.reader.data.local.dao.SourceWithUnreadCount
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.local.entity.SourceEntity
+import okhttp3.Request
+import org.jsoup.Jsoup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -221,6 +224,11 @@ class FeedRepository(
 
             val newArticlesCount = saveArticles(source, parsedFeed.items)
             sourceDao.recordSuccess(sourceId, System.currentTimeMillis())
+            if (newArticlesCount > 0) {
+                repoScope.launch {
+                    resolveMissingArticleImages(10)
+                }
+            }
             newArticlesCount
         } catch (e: Exception) {
             sourceDao.recordFailure(sourceId, e.message ?: "Network or parsing error")
@@ -240,7 +248,41 @@ class FeedRepository(
             totalNew = tasks.awaitAll().sum()
         }
         notifyWidgetUpdate()
+        repoScope.launch {
+            resolveMissingArticleImages(25)
+        }
         totalNew
+    }
+
+    suspend fun resolveMissingArticleImages(limit: Int = 30) = withContext(Dispatchers.IO) {
+        val missing = articleDao.getArticlesWithoutImage(limit)
+        if (missing.isEmpty()) return@withContext
+
+        val client = FeedFetcher.createDefaultClient()
+        for (article in missing) {
+            val url = article.url
+            if (url.isBlank()) continue
+            try {
+                val req = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36 StoaReader/1.4")
+                    .build()
+                client.newCall(req).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string()
+                        if (!body.isNullOrBlank()) {
+                            val doc = Jsoup.parse(body)
+                            val ogImg = ImageResolver.extractOpenGraphImage(doc)
+                                ?: ImageResolver.extractBestImageFromHtml(doc)
+                            if (!ogImg.isNullOrBlank()) {
+                                articleDao.updateImageUrl(article.id, ogImg)
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
     }
 
     private suspend fun saveArticles(source: SourceEntity, items: List<ParsedArticle>): Int {

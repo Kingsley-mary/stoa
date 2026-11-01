@@ -132,6 +132,8 @@ import com.signal.reader.ui.reader.ArticleAudioPlayer
 import com.signal.reader.ui.reader.AudioPlaybackStatus
 import com.signal.reader.ui.theme.SignalAccent
 import com.signal.reader.ui.theme.SignalMotion
+import com.signal.reader.ui.theme.SignalTactile
+import com.signal.reader.ui.theme.signalTactileClick
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
 import com.signal.reader.ui.theme.signalSharedImage
@@ -957,6 +959,7 @@ fun ReaderScreen(
             ShareStorySheet(
                 article = currentArticle,
                 paragraphs = paragraphTexts,
+                initialQuote = null,
                 onDismiss = { showShareSheet = false }
             )
         }
@@ -2430,26 +2433,15 @@ private fun AaPillButton(
     content: @Composable () -> Unit
 ) {
     val colors = SignalTheme.colors
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed && enabled) 0.96f else 1.0f,
-        animationSpec = SignalMotion.PressSpringSpec,
-        label = "aaPillScale"
-    )
-
     Box(
         modifier = modifier
             .alpha(if (enabled) 1.0f else 0.35f)
-            .scale(scale)
-            .border(1.dp, colors.ink, CircleShape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
+            .signalTactileClick(
+                targetScale = SignalTactile.ButtonPressScale,
                 enabled = enabled,
                 onClick = onClick
-            ),
+            )
+            .border(1.dp, colors.ink, CircleShape),
         contentAlignment = Alignment.Center
     ) {
         content()
