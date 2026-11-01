@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,6 +43,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -70,6 +72,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.opml.OpmlManager
 import com.signal.reader.data.repository.FeedRepository
@@ -77,6 +82,7 @@ import com.signal.reader.data.sync.RefreshWorker
 import com.signal.reader.data.update.UpdateManager
 import com.signal.reader.data.update.UpdateState
 import com.signal.reader.ui.components.BackChevron
+import com.signal.reader.ui.components.SourceLogo
 import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
@@ -105,6 +111,35 @@ fun SettingsScreen(
 
     val fontSizes = listOf(16.sp, 18.sp, 20.sp, 23.sp)
     var showOpenLinksDialog by remember { mutableStateOf(false) }
+    var showPublicationAlertsDialog by remember { mutableStateOf(false) }
+
+    val notifManager = remember { (context.applicationContext as com.signal.reader.SignalApplication).notificationManager }
+    val followedSources by repository.getFollowedSourcesFlow().collectAsState(initial = emptyList())
+    var notificationsGranted by remember {
+        mutableStateOf(notifManager.areNotificationsGloballyEnabled())
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationsGranted = notifManager.areNotificationsGloballyEnabled()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        notificationsGranted = isGranted
+        if (isGranted) {
+            Toast.makeText(context, "Publication alerts enabled", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Activity result launcher for OPML export
     val exportOpmlLauncher = rememberLauncherForActivityResult(
@@ -410,9 +445,55 @@ fun SettingsScreen(
                 }
             }
 
+            // Notifications Section
+            item {
+                StaggeredItem(index = 5) {
+                    Column {
+                        SettingsSectionHeader("Notifications")
+
+                        val enabledSourcesCount = followedSources.count { it.notificationsEnabled }
+                        val totalFollowed = followedSources.size
+
+                        if (!notificationsGranted) {
+                            SettingsActionRow(
+                                label = "Publication alerts",
+                                sublabel = "Notifications are disabled on this device · Tap to enable",
+                                onClick = {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        try {
+                                            context.startActivity(notifManager.createAppNotificationSettingsIntent())
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                            )
+                        } else {
+                            SettingsActionRow(
+                                label = "Manage publication alerts",
+                                sublabel = if (totalFollowed == 0) "No publications followed" else "$enabledSourcesCount of $totalFollowed publications active",
+                                onClick = {
+                                    showPublicationAlertsDialog = true
+                                }
+                            )
+                        }
+
+                        SettingsActionRow(
+                            label = "Android notification settings",
+                            sublabel = "Configure sounds, badges, and publication channels",
+                            onClick = {
+                                try {
+                                    context.startActivity(notifManager.createAppNotificationSettingsIntent())
+                                } catch (_: Exception) {}
+                            }
+                        )
+                    }
+                }
+            }
+
             // Your Sources Section
             item {
-                StaggeredItem(index = 4) {
+                StaggeredItem(index = 6) {
                     Column {
                         SettingsSectionHeader("Your sources")
 
@@ -433,7 +514,7 @@ fun SettingsScreen(
 
             // Opening Links Section
             item {
-                StaggeredItem(index = 5) {
+                StaggeredItem(index = 7) {
                     Column {
                         SettingsSectionHeader("Opening links")
 
@@ -489,7 +570,7 @@ fun SettingsScreen(
 
             // About Section
             item {
-                StaggeredItem(index = 6) {
+                StaggeredItem(index = 8) {
                     Column {
                         SettingsSectionHeader("About")
 
@@ -694,6 +775,164 @@ fun SettingsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(text = "Cancel", color = colors.mute, fontSize = 14.sp)
+                    }
+                }
+            )
+        }
+
+        if (showPublicationAlertsDialog) {
+            AlertDialog(
+                onDismissRequest = { showPublicationAlertsDialog = false },
+                containerColor = colors.bg,
+                titleContentColor = colors.ink,
+                textContentColor = colors.mute,
+                shape = RoundedCornerShape(22.dp),
+                title = {
+                    Text(
+                        text = "Publication Alerts",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.ink
+                    )
+                },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Choose which publications can notify you when new stories are published.",
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            color = colors.mute
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        if (followedSources.isEmpty()) {
+                            Text(
+                                text = "You are not following any publications yet.",
+                                fontSize = 14.sp,
+                                color = colors.mute,
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                        } else {
+                            val activeCount = followedSources.count { it.notificationsEnabled }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "$activeCount active",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = colors.mute
+                                )
+                                Text(
+                                    text = if (activeCount > 0) "Mute all" else "Enable all",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.ink,
+                                    modifier = Modifier
+                                        .clickable {
+                                            haptics.tick()
+                                            val enableAll = activeCount == 0
+                                            coroutineScope.launch {
+                                                followedSources.forEach { s ->
+                                                    repository.setSourceNotificationsEnabled(s.id, enableAll)
+                                                }
+                                            }
+                                        }
+                                        .padding(4.dp)
+                                )
+                            }
+
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 380.dp)
+                            ) {
+                                items(followedSources.size) { index ->
+                                    val source = followedSources[index]
+                                    val isSystemChannelOn = notifManager.isChannelEnabledInSystem(source.id)
+                                    HorizontalDivider(color = colors.line, thickness = 1.dp)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    try {
+                                                        context.startActivity(notifManager.createChannelSettingsIntent(source.id))
+                                                    } catch (_: Exception) {}
+                                                }
+                                                .padding(end = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            SourceLogo(
+                                                siteUrl = source.siteUrl,
+                                                sourceName = source.name,
+                                                size = 28.dp,
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = source.name,
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = colors.ink,
+                                                    maxLines = 1
+                                                )
+                                                Text(
+                                                    text = if (!isSystemChannelOn) {
+                                                        "Muted in Android settings · Tap to unmute"
+                                                    } else {
+                                                        "Tap to configure sound & alert style"
+                                                    },
+                                                    fontSize = 11.sp,
+                                                    color = colors.mute,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+
+                                        SignalSwitch(
+                                            checked = source.notificationsEnabled,
+                                            onCheckedChange = { checked ->
+                                                haptics.tick()
+                                                coroutineScope.launch {
+                                                    repository.setSourceNotificationsEnabled(source.id, checked)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.ink)
+                            .signalPressScale(0.96f) {
+                                showPublicationAlertsDialog = false
+                            }
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Done",
+                            color = colors.bg,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             )

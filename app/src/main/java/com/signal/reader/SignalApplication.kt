@@ -29,6 +29,9 @@ class SignalApplication : Application(), ImageLoaderFactory {
     lateinit var updateManager: UpdateManager
         private set
 
+    lateinit var notificationManager: com.signal.reader.data.notification.StoaNotificationManager
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -37,6 +40,7 @@ class SignalApplication : Application(), ImageLoaderFactory {
         repository = FeedRepository(database)
         settingsManager = SettingsManager(this)
         updateManager = UpdateManager(this)
+        notificationManager = com.signal.reader.data.notification.StoaNotificationManager(this)
 
         val settings = settingsManager.settingsFlow.value
         RefreshWorker.schedule(
@@ -47,6 +51,8 @@ class SignalApplication : Application(), ImageLoaderFactory {
         )
 
         CoroutineScope(Dispatchers.IO).launch {
+            val followed = database.sourceDao().getFollowedSources()
+            notificationManager.syncAllSourceChannels(followed)
             repository.resolveMissingArticleImages(30)
         }
     }

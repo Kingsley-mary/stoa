@@ -1,6 +1,10 @@
 package com.signal.reader.ui.sources
 
 import android.net.Uri
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.BackHandler
@@ -55,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.ui.components.ArticleRow
 import com.signal.reader.ui.components.BackChevron
+import com.signal.reader.ui.components.BellIcon
 import com.signal.reader.ui.components.HeroCard
 import com.signal.reader.ui.components.SourceLogo
 import com.signal.reader.ui.components.StaggeredItem
@@ -62,8 +67,10 @@ import com.signal.reader.ui.components.TimeUtils
 import com.signal.reader.ui.components.getSourceInitials
 import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
+import com.signal.reader.ui.theme.SignalTactile
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
+import com.signal.reader.ui.theme.signalTactileClick
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -156,25 +163,85 @@ fun SourcePageScreen(
             .fillMaxSize()
             .background(colors.bg)
     ) {
-        // Header with Back Chevron
+        // Header with Back Chevron and Notification Bell
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .signalPressScale(0.96f)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onBack() },
+                    .signalTactileClick(
+                        targetScale = SignalTactile.IconPressScale,
+                        onClick = onBack
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 BackChevron(color = colors.ink)
+            }
+
+            val currentSource = source
+            if (currentSource != null && currentSource.followed) {
+                val notifManager = remember { (context.applicationContext as com.signal.reader.SignalApplication).notificationManager }
+                val isSystemActive = remember(currentSource.id) { notifManager.isChannelEnabledInSystem(currentSource.id) }
+                val isAlertsActive = currentSource.notificationsEnabled && isSystemActive
+
+                val permissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { isGranted ->
+                    if (isGranted) {
+                        coroutineScope.launch {
+                            repository.setSourceNotificationsEnabled(currentSource.id, true)
+                            haptics.tick()
+                            statusNote = "Alerts enabled for ${currentSource.name}"
+                            Toast.makeText(context, "Alerts enabled for ${currentSource.name}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .border(1.dp, if (isAlertsActive) colors.ink else colors.line, CircleShape)
+                        .signalTactileClick(
+                            targetScale = SignalTactile.IconPressScale,
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    androidx.core.content.ContextCompat.checkSelfPermission(
+                                        context,
+                                        android.Manifest.permission.POST_NOTIFICATIONS
+                                    ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    coroutineScope.launch {
+                                        val newState = !currentSource.notificationsEnabled
+                                        repository.setSourceNotificationsEnabled(currentSource.id, newState)
+                                        haptics.tick()
+                                        val msg = if (newState) {
+                                            "Alerts enabled for ${currentSource.name}"
+                                        } else {
+                                            "Alerts muted for ${currentSource.name}"
+                                        }
+                                        statusNote = msg
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    BellIcon(
+                        color = if (isAlertsActive) colors.ink else colors.mute,
+                        enabled = isAlertsActive,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
 

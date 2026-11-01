@@ -147,6 +147,8 @@ fun ReaderScreen(
     articleId: Long,
     repository: FeedRepository,
     settingsManager: SettingsManager,
+    initialShareQuote: String? = null,
+    onQuoteShared: (() -> Unit)? = null,
     onBack: () -> Unit,
     onOpenSourcePage: (Long) -> Unit,
     onOpenArticle: ((Long) -> Unit)? = null,
@@ -250,7 +252,8 @@ fun ReaderScreen(
 
     var extractedHtml by remember { mutableStateOf<String?>(null) }
     var isExtracting by remember { mutableStateOf(false) }
-    var showShareSheet by remember { mutableStateOf(false) }
+    var showShareSheet by remember(initialShareQuote) { mutableStateOf(!initialShareQuote.isNullOrBlank()) }
+    var pendingShareQuote by remember(initialShareQuote) { mutableStateOf(initialShareQuote) }
 
     val audioPlayer = remember { ArticleAudioPlayer(context) }
     val audioState by audioPlayer.playbackState.collectAsState()
@@ -959,8 +962,12 @@ fun ReaderScreen(
             ShareStorySheet(
                 article = currentArticle,
                 paragraphs = paragraphTexts,
-                initialQuote = null,
-                onDismiss = { showShareSheet = false }
+                initialQuote = pendingShareQuote,
+                onDismiss = {
+                    showShareSheet = false
+                    pendingShareQuote = null
+                    onQuoteShared?.invoke()
+                }
             )
         }
     }

@@ -222,14 +222,21 @@ class FeedRepository(
                 }
             }
 
-            val newArticlesCount = saveArticles(source, parsedFeed.items)
+            val newArticles = saveArticles(source, parsedFeed.items)
             sourceDao.recordSuccess(sourceId, System.currentTimeMillis())
-            if (newArticlesCount > 0) {
+            if (newArticles.isNotEmpty()) {
+                if (source.notificationsEnabled) {
+                    try {
+                        val notifManager = com.signal.reader.SignalApplication.instance.notificationManager
+                        notifManager.postNewArticlesNotification(source, newArticles)
+                    } catch (_: Exception) {
+                    }
+                }
                 repoScope.launch {
                     resolveMissingArticleImages(10)
                 }
             }
-            newArticlesCount
+            newArticles.size
         } catch (e: Exception) {
             sourceDao.recordFailure(sourceId, e.message ?: "Network or parsing error")
             0
@@ -285,8 +292,12 @@ class FeedRepository(
         }
     }
 
-    private suspend fun saveArticles(source: SourceEntity, items: List<ParsedArticle>): Int {
-        var newCount = 0
+    suspend fun setSourceNotificationsEnabled(sourceId: Long, enabled: Boolean) = withContext(Dispatchers.IO) {
+        sourceDao.setNotificationsEnabled(sourceId, enabled)
+    }
+
+    private suspend fun saveArticles(source: SourceEntity, items: List<ParsedArticle>): List<ArticleEntity> {
+        val newArticles = mutableListOf<ArticleEntity>()
         for (item in items) {
             val existing = articleDao.getArticleByGuid(item.guid, source.id)
             if (existing == null) {
@@ -306,10 +317,12 @@ class FeedRepository(
                     url = item.url
                 )
                 val insertedId = articleDao.insertIgnore(entity)
-                if (insertedId > 0) newCount++
+                if (insertedId > 0) {
+                    newArticles.add(entity.copy(id = insertedId))
+                }
             }
         }
-        return newCount
+        return newArticles
     }
 
     suspend fun searchArticles(query: String, matchingSourceNames: Set<String> = emptySet()): List<ArticleEntity> = withContext(Dispatchers.IO) {

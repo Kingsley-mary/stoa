@@ -41,6 +41,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.signal.reader.data.notification.StoaNotificationManager
 import com.signal.reader.data.update.UpdateState
 import com.signal.reader.ui.browser.BrowserScreen
 import com.signal.reader.ui.components.SignalBottomBar
@@ -65,14 +66,36 @@ class MainActivity : ComponentActivity() {
 
     private val navDestination = mutableStateOf<String?>(null)
     private val navArticleId = mutableStateOf<Long?>(null)
+    private val navShareQuote = mutableStateOf<String?>(null)
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        val notifArticleId = intent.getLongExtra(StoaNotificationManager.EXTRA_ARTICLE_ID, -1L).takeIf { it > 0 }
+            ?: intent.getLongExtra("article_id", -1L).takeIf { it > 0 }
+        val notifSourceId = intent.getLongExtra(StoaNotificationManager.EXTRA_SOURCE_ID, -1L).takeIf { it > 0 }
+
+        if (notifArticleId != null) {
+            navArticleId.value = notifArticleId
+        } else if (notifSourceId != null) {
+            navDestination.value = "source_page/$notifSourceId"
+        } else if (intent.hasExtra("open_destination")) {
+            navDestination.value = intent.getStringExtra("open_destination")
+        }
+
+        if (intent.action == Intent.ACTION_PROCESS_TEXT) {
+            val text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()?.trim()
+            if (!text.isNullOrBlank()) {
+                navShareQuote.value = text
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         val app = application as SignalApplication
-        navArticleId.value = intent?.getLongExtra("article_id", -1L)?.takeIf { it > 0 }
-        navDestination.value = intent?.getStringExtra("open_destination")
+        handleIntent(intent)
 
         setContent {
             val settings by app.settingsManager.settingsFlow.collectAsState()
@@ -83,7 +106,9 @@ class MainActivity : ComponentActivity() {
                     isFirstLaunch = !settings.isFirstLaunchCompleted,
                     isCompactLayout = settings.homeLayout == "compact",
                     initialArticleId = navArticleId.value,
-                    initialDestination = navDestination.value
+                    initialDestination = navDestination.value,
+                    initialShareQuote = navShareQuote.value,
+                    onQuoteConsumed = { navShareQuote.value = null }
                 )
             }
         }
@@ -92,8 +117,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        navArticleId.value = intent.getLongExtra("article_id", -1L).takeIf { it > 0 }
-        navDestination.value = intent.getStringExtra("open_destination")
+        handleIntent(intent)
     }
 }
 
@@ -103,7 +127,9 @@ fun SignalAppNav(
     isFirstLaunch: Boolean,
     isCompactLayout: Boolean,
     initialArticleId: Long? = null,
-    initialDestination: String? = null
+    initialDestination: String? = null,
+    initialShareQuote: String? = null,
+    onQuoteConsumed: (() -> Unit)? = null
 ) {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
@@ -460,6 +486,8 @@ fun SignalAppNav(
                             articleId = articleId,
                             repository = app.repository,
                             settingsManager = app.settingsManager,
+                            initialShareQuote = initialShareQuote,
+                            onQuoteShared = onQuoteConsumed,
                             onBack = {
                                 navController.popBackStack()
                             },
