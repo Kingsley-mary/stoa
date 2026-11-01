@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -193,16 +194,14 @@ fun InterestsOnboardingScreen(
         }
     }
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(colors.bg)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
         // Header
         Row(
             modifier = Modifier
@@ -312,7 +311,7 @@ fun InterestsOnboardingScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            .padding(top = 28.dp, bottom = 100.dp)
+                            .padding(top = 28.dp, bottom = 28.dp)
                     ) {
                         Text(
                             text = "WHAT DO YOU READ?",
@@ -365,7 +364,7 @@ fun InterestsOnboardingScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            .padding(top = 28.dp, bottom = 100.dp)
+                            .padding(top = 28.dp, bottom = 28.dp)
                     ) {
                         Text(
                             text = "START WITH THESE",
@@ -656,12 +655,10 @@ fun InterestsOnboardingScreen(
                 }
             }
         }
-    }
 
-    // Sticky Footer: physically anchored to BottomCenter of the screen
+        // Sticky Footer: permanently anchored at the bottom of the Column
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(colors.bg)
                 .drawBehind {
@@ -672,12 +669,11 @@ fun InterestsOnboardingScreen(
                         strokeWidth = 1.dp.toPx()
                     )
                 }
-                .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 14.dp)
         ) {
             val isEnabled = if (step == 1) pickedTopics.isNotEmpty() else addedSources.isNotEmpty()
             val buttonText = if (step == 1) {
-                if (pickedTopics.isEmpty()) "Pick at least one"
+                if (pickedTopics.isEmpty()) "Pick at least one topic"
                 else "Continue with ${pickedTopics.size} ${if (pickedTopics.size == 1) "topic" else "topics"}"
             } else {
                 val totalAvailable = suggestedSources.size + moreSources.size + customAddedSources.size
@@ -691,21 +687,20 @@ fun InterestsOnboardingScreen(
                     .fillMaxWidth()
                     .height(54.dp)
                     .clip(CircleShape)
+                    .background(if (isEnabled) colors.ink else colors.card)
+                    .border(1.dp, if (isEnabled) colors.ink else colors.line, CircleShape)
                     .then(
                         if (isEnabled) {
-                            Modifier
-                                .background(colors.ink)
-                                .signalPressScale(0.96f) {
-                                    haptics.pop()
-                                    if (step == 1) {
-                                        proceedToStep2()
-                                    } else {
-                                        onFinish(addedSources.toList(), pickedTopics.toSet())
-                                    }
+                            Modifier.signalPressScale(0.96f) {
+                                haptics.pop()
+                                if (step == 1) {
+                                    proceedToStep2()
+                                } else {
+                                    onFinish(addedSources.toList(), pickedTopics.toSet())
                                 }
+                            }
                         } else {
                             Modifier
-                                .border(1.dp, colors.line, CircleShape)
                         }
                     ),
                 contentAlignment = Alignment.Center

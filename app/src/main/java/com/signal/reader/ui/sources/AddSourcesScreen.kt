@@ -651,7 +651,7 @@ fun AddSourcesScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(CircleShape)
-                    .background(if (isButtonEnabled) colors.ink else colors.bg)
+                    .background(if (isButtonEnabled) colors.ink else colors.card)
                     .border(1.dp, if (isButtonEnabled) colors.ink else colors.line, CircleShape)
                     .signalPressScale(0.96f) {
                         if (isButtonEnabled) {
