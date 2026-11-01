@@ -111,7 +111,7 @@ fun SourcesScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 20.dp, end = 20.dp, top = 26.dp, bottom = 22.dp),
+                        .padding(start = 20.dp, end = 20.dp, top = 48.dp, bottom = 22.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Bottom
                 ) {

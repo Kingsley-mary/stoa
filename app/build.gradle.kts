@@ -13,8 +13,8 @@ android {
         applicationId = "com.signal.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.4.3"
+        versionCode = 9
+        versionName = "1.4.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -88,6 +88,9 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+
+    // YouTube Player (Official IFrame API wrapper for Android)
+    implementation("com.pierfrancescosoffritti.androidyoutubeplayer:core:12.1.1")
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 

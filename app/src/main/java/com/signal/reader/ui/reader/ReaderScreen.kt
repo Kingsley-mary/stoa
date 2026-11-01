@@ -100,6 +100,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.FullscreenListener
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.signal.reader.data.feed.ImageResolver
 import com.signal.reader.data.feed.ReadabilityExtractor
 import com.signal.reader.data.local.SettingsManager
@@ -504,6 +510,7 @@ fun ReaderScreen(
                                 block = block,
                                 fontSize = currentFontSize,
                                 isSerif = isSerif,
+                                articleUrl = currentArticle.url,
                                 onImageClick = { url, _ ->
                                     val clickedIdx = allArticleImages.indexOfFirst { it.url == url }.takeIf { it >= 0 } ?: 0
                                     activeGalleryIndex = clickedIdx
@@ -685,7 +692,9 @@ fun ReaderScreen(
 
                             Box(
                                 modifier = Modifier
-                                    .border(1.dp, colors.ink, CircleShape)
+                                    .clip(CircleShape)
+                                    .background(colors.card)
+                                    .border(1.dp, colors.line, CircleShape)
                                     .signalPressScale(0.96f) {
                                         haptics.tick()
                                         settingsManager.updateTheme(if (isDarkActive) "light" else "dark")
@@ -720,7 +729,9 @@ fun ReaderScreen(
                             // 2. Single Typeface Switcher Button (switches between Sans and Serif)
                             Box(
                                 modifier = Modifier
-                                    .border(1.dp, colors.ink, CircleShape)
+                                    .clip(CircleShape)
+                                    .background(colors.card)
+                                    .border(1.dp, colors.line, CircleShape)
                                     .signalPressScale(0.96f) {
                                         haptics.tick()
                                         settingsManager.updateFontFamily(if (isSerif) "sans" else "serif")
@@ -1410,6 +1421,7 @@ private fun RenderContentBlock(
     block: ContentBlock,
     fontSize: androidx.compose.ui.unit.TextUnit,
     isSerif: Boolean = false,
+    articleUrl: String? = null,
     onImageClick: (url: String, caption: String?) -> Unit,
     onLinkClick: (url: String) -> Unit,
     onVideoClick: (url: String) -> Unit
@@ -1479,6 +1491,7 @@ private fun RenderContentBlock(
         is ContentBlock.Video -> {
             VideoCardBlock(
                 block = block,
+                articleUrl = articleUrl,
                 onVideoClick = onVideoClick
             )
         }
@@ -1553,10 +1566,304 @@ private fun RenderContentBlock(
     }
 }
 
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun InAppVideoPlayer(
     block: ContentBlock.Video,
+    articleUrl: String? = null,
+    onClose: () -> Unit,
+    onOpenExternal: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (block.provider == VideoProvider.YOUTUBE) {
+        val ytId = block.videoId ?: extractYouTubeVideoId(block.videoUrl)
+        if (ytId != null) {
+            YouTubePlayerCard(
+                videoId = ytId,
+                articleUrl = articleUrl,
+                onClose = onClose,
+                onOpenExternal = onOpenExternal,
+                modifier = modifier
+            )
+            return
+        }
+    }
+
+    WebViewPlayerCard(
+        block = block,
+        articleUrl = articleUrl,
+        onClose = onClose,
+        onOpenExternal = onOpenExternal,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun YouTubePlayerCard(
+    videoId: String,
+    articleUrl: String?,
+    onClose: () -> Unit,
+    onOpenExternal: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = SignalTheme.colors
+    val context = LocalContext.current
+    var playerViewRef by remember { mutableStateOf<YouTubePlayerView?>(null) }
+    var isBuffering by remember { mutableStateOf(true) }
+    var playbackError by remember { mutableStateOf<PlayerConstants.PlayerError?>(null) }
+    var customFullscreenView by remember { mutableStateOf<View?>(null) }
+    var exitFullscreenCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val origin = remember(articleUrl) {
+        runCatching {
+            val uri = Uri.parse(articleUrl)
+            if (!uri.host.isNullOrBlank() && uri.scheme != null) {
+                "${uri.scheme}://${uri.host}"
+            } else null
+        }.getOrNull() ?: "https://${context.packageName}"
+    }
+
+    DisposableEffect(videoId) {
+        onDispose {
+            try {
+                playerViewRef?.release()
+            } catch (_: Exception) {}
+            playerViewRef = null
+            customFullscreenView = null
+            exitFullscreenCallback = null
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.Black)
+            .border(1.dp, colors.line, RoundedCornerShape(18.dp))
+    ) {
+        if (playbackError != null) {
+            // Editorial Fallback Card for restricted/copyright-blocked videos (e.g. VEVO / music labels)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF161514))
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(bottom = 10.dp)
+                ) {
+                    PlayIcon(color = SignalAccent, modifier = Modifier.size(12.dp))
+                    Text(
+                        text = "YOUTUBE",
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp
+                    )
+                }
+                Text(
+                    text = "This video requires playback directly on YouTube.",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 14.dp, start = 12.dp, end = 12.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(SignalAccent)
+                        .clickable { onOpenExternal() }
+                        .padding(horizontal = 18.dp, vertical = 9.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Watch on YouTube",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = "↗",
+                            color = Color.White,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
+        } else {
+            AndroidView(
+                factory = { ctx ->
+                    val playerOptions = IFramePlayerOptions.Builder()
+                        .controls(1)
+                        .fullscreen(1)
+                        .rel(0)
+                        .origin(origin)
+                        .build()
+
+                    YouTubePlayerView(ctx).apply {
+                        enableAutomaticInitialization = false
+                        addFullscreenListener(object : FullscreenListener {
+                            override fun onEnterFullscreen(fullscreenView: View, exitFullscreen: () -> Unit) {
+                                customFullscreenView = fullscreenView
+                                exitFullscreenCallback = exitFullscreen
+                            }
+
+                            override fun onExitFullscreen() {
+                                customFullscreenView = null
+                                exitFullscreenCallback = null
+                            }
+                        })
+                        initialize(
+                            youTubePlayerListener = object : AbstractYouTubePlayerListener() {
+                                override fun onReady(youTubePlayer: YouTubePlayer) {
+                                    isBuffering = false
+                                    youTubePlayer.loadVideo(videoId, 0f)
+                                }
+
+                                override fun onStateChange(youTubePlayer: YouTubePlayer, state: PlayerConstants.PlayerState) {
+                                    if (state == PlayerConstants.PlayerState.PLAYING) {
+                                        isBuffering = false
+                                    }
+                                }
+
+                                override fun onError(youTubePlayer: YouTubePlayer, error: PlayerConstants.PlayerError) {
+                                    playbackError = error
+                                }
+                            },
+                            handleNetworkEvents = true,
+                            playerOptions = playerOptions,
+                            videoId = videoId
+                        )
+                        playerViewRef = this
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Buffering indicator
+            if (isBuffering) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = SignalAccent,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+        }
+
+        // Action pills: Open External ↗ and Close ✕
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.70f))
+                    .border(0.5.dp, Color.White.copy(alpha = 0.30f), CircleShape)
+                    .clickable { onOpenExternal() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "↗",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.70f))
+                    .border(0.5.dp, Color.White.copy(alpha = 0.30f), CircleShape)
+                    .clickable { onClose() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "✕",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // Fullscreen Overlay Dialog
+        if (customFullscreenView != null) {
+            Dialog(
+                onDismissRequest = {
+                    exitFullscreenCallback?.invoke()
+                    customFullscreenView = null
+                },
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                ) {
+                    AndroidView(
+                        factory = { customFullscreenView!! },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .statusBarsPadding()
+                            .padding(16.dp)
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.75f))
+                            .border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                            .clickable {
+                                exitFullscreenCallback?.invoke()
+                                customFullscreenView = null
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "✕",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun WebViewPlayerCard(
+    block: ContentBlock.Video,
+    articleUrl: String? = null,
     onClose: () -> Unit,
     onOpenExternal: () -> Unit,
     modifier: Modifier = Modifier
@@ -1567,12 +1874,19 @@ private fun InAppVideoPlayer(
     var customFullscreenView by remember { mutableStateOf<View?>(null) }
     var customViewCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
 
-    val (baseUrl, htmlContent) = remember(block) {
+    val (baseUrl, htmlContent) = remember(block, articleUrl) {
+        val articleOrigin = runCatching {
+            val uri = Uri.parse(articleUrl)
+            if (!uri.host.isNullOrBlank() && uri.scheme != null) {
+                "${uri.scheme}://${uri.host}"
+            } else null
+        }.getOrNull() ?: "https://stoa.app"
+
         when (block.provider) {
             VideoProvider.YOUTUBE -> {
                 val ytId = block.videoId ?: extractYouTubeVideoId(block.videoUrl)
                 val embedSrc = if (ytId != null) {
-                    "https://www.youtube.com/embed/$ytId?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1"
+                    "https://www.youtube-nocookie.com/embed/$ytId?autoplay=1&playsinline=1&enablejsapi=1&rel=0&origin=$articleOrigin"
                 } else {
                     block.videoUrl
                 }
@@ -1599,7 +1913,7 @@ private fun InAppVideoPlayer(
                     </body>
                     </html>
                 """.trimIndent()
-                Pair("https://www.youtube.com", html)
+                Pair(articleOrigin, html)
             }
             VideoProvider.VIMEO -> {
                 val vimeoId = block.videoId ?: extractVimeoVideoId(block.videoUrl)
@@ -1676,7 +1990,7 @@ private fun InAppVideoPlayer(
                     </body>
                     </html>
                 """.trimIndent()
-                Pair("https://stoa.app", html)
+                Pair(articleOrigin, html)
             }
         }
     }
@@ -1726,7 +2040,6 @@ private fun InAppVideoPlayer(
                         useWideViewPort = true
                         loadWithOverviewMode = true
                         mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                        // Remove WebView token from User Agent so YouTube serves standard mobile player
                         userAgentString = userAgentString.replace("; wv", "")
                     }
                     webChromeClient = object : WebChromeClient() {
@@ -1789,7 +2102,6 @@ private fun InAppVideoPlayer(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Open external button
             Box(
                 modifier = Modifier
                     .size(32.dp)
@@ -1807,7 +2119,6 @@ private fun InAppVideoPlayer(
                 )
             }
 
-            // Close button
             Box(
                 modifier = Modifier
                     .size(32.dp)
@@ -1826,7 +2137,7 @@ private fun InAppVideoPlayer(
             }
         }
 
-        // Fullscreen Overlay Dialog (activated when user taps fullscreen inside player)
+        // Fullscreen Overlay Dialog
         if (customFullscreenView != null) {
             Dialog(
                 onDismissRequest = {
@@ -1848,7 +2159,6 @@ private fun InAppVideoPlayer(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // Close fullscreen button in corner
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -1880,6 +2190,7 @@ private fun InAppVideoPlayer(
 @Composable
 private fun VideoCardBlock(
     block: ContentBlock.Video,
+    articleUrl: String? = null,
     onVideoClick: (url: String) -> Unit
 ) {
     val colors = SignalTheme.colors
@@ -1901,6 +2212,7 @@ private fun VideoCardBlock(
         if (isPlaying) {
             InAppVideoPlayer(
                 block = block,
+                articleUrl = articleUrl,
                 onClose = {
                     haptics.tick()
                     isPlaying = false

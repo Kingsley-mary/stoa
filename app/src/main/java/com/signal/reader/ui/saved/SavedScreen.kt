@@ -45,7 +45,7 @@ fun SavedScreen(
                 text = "SAVED",
                 style = SignalTheme.typography.screenTitle,
                 color = colors.ink,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 26.dp, bottom = 18.dp)
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 48.dp, bottom = 18.dp)
             )
         }
 
