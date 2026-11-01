@@ -35,7 +35,8 @@ fun SignalHeader(
     onSearchClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onMarkAllAsReadClick: () -> Unit,
-    onLogoClick: () -> Unit = {}
+    onLogoClick: () -> Unit = {},
+    onJumpToReadClick: (() -> Unit)? = null
 ) {
     val colors = SignalTheme.colors
     var menuExpanded by remember { mutableStateOf(false) }
@@ -109,6 +110,23 @@ fun SignalHeader(
                         }
                     )
                     HorizontalDivider(color = colors.line)
+                    if (onJumpToReadClick != null) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "Jump to earlier read",
+                                    color = colors.ink,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onJumpToReadClick()
+                            }
+                        )
+                        HorizontalDivider(color = colors.line)
+                    }
                     DropdownMenuItem(
                         text = {
                             Text(

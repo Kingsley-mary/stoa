@@ -48,6 +48,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -183,6 +184,38 @@ fun HomeScreen(
         }
     }
 
+    val listState = rememberLazyListState()
+
+    val firstReadStreamIndex = remember(streamArticles) {
+        streamArticles.indexOfFirst { it.read }
+    }
+
+    val targetReadListIndex = remember(shouldShowDomainCard, heroArticle, firstReadStreamIndex) {
+        if (firstReadStreamIndex < 0) -1
+        else {
+            (if (shouldShowDomainCard) 1 else 0) +
+            (if (heroArticle != null) 1 else 0) +
+            firstReadStreamIndex
+        }
+    }
+
+    val jumpToReadAction: (() -> Unit)? = remember(targetReadListIndex, listState) {
+        if (targetReadListIndex > 0) {
+            {
+                coroutineScope.launch {
+                    haptics.tick()
+                    listState.animateScrollToItem(targetReadListIndex)
+                }
+            }
+        } else null
+    }
+
+    val showJumpToRead by remember(targetReadListIndex, listState) {
+        derivedStateOf {
+            targetReadListIndex > 0 && listState.firstVisibleItemIndex < targetReadListIndex - 1
+        }
+    }
+
     // Pull-to-refresh pull distance tracking (70px threshold)
     var pullDistance by remember { mutableFloatStateOf(0f) }
     var hasTickFired by remember { mutableStateOf(false) }
@@ -257,7 +290,8 @@ fun HomeScreen(
                         repository.markAllAsRead(selectedSourceId)
                     }
                 },
-                onLogoClick = { triggerRefresh() }
+                onLogoClick = { triggerRefresh() },
+                onJumpToReadClick = jumpToReadAction
             )
 
             // Pull to refresh bar (.ptr / #ptrbar)
@@ -299,8 +333,6 @@ fun HomeScreen(
                     selectedSourceId = selectedSourceId,
                     onSelectSource = { onChipSelected(it) }
                 )
-
-                val listState = rememberLazyListState()
 
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
@@ -416,6 +448,52 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(32.dp))
                         }
                     }
+                }
+            }
+        }
+
+        // Floating Jump to Earlier Read Pill
+        AnimatedVisibility(
+            visible = showJumpToRead,
+            enter = fadeIn(tween(200)) + slideInVertically(
+                initialOffsetY = { it / 2 },
+                animationSpec = SignalMotion.easeTween(250)
+            ),
+            exit = fadeOut(tween(150)) + slideOutVertically(
+                targetOffsetY = { it / 2 },
+                animationSpec = SignalMotion.easeTween(200)
+            ),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(colors.bg)
+                    .border(1.dp, colors.ink, CircleShape)
+                    .signalPressScale(0.96f) {
+                        jumpToReadAction?.invoke()
+                    }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Earlier read",
+                        color = colors.ink,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "↓",
+                        color = colors.ink,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
