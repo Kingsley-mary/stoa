@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -1566,26 +1567,116 @@ private fun InAppVideoPlayer(
     var customFullscreenView by remember { mutableStateOf<View?>(null) }
     var customViewCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
 
-    val embedUrl = remember(block) {
+    val (baseUrl, htmlContent) = remember(block) {
         when (block.provider) {
             VideoProvider.YOUTUBE -> {
                 val ytId = block.videoId ?: extractYouTubeVideoId(block.videoUrl)
-                if (ytId != null) {
-                    "https://www.youtube-nocookie.com/embed/$ytId?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1"
+                val embedSrc = if (ytId != null) {
+                    "https://www.youtube.com/embed/$ytId?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1"
                 } else {
                     block.videoUrl
                 }
+                val html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                        <meta name="referrer" content="strict-origin-when-cross-origin">
+                        <style>
+                            * { margin:0; padding:0; box-sizing:border-box; background-color:#000; }
+                            html, body { width:100%; height:100%; overflow:hidden; background-color:#000; }
+                            iframe { width:100%; height:100%; border:0; display:block; }
+                        </style>
+                    </head>
+                    <body>
+                        <iframe 
+                            src="$embedSrc" 
+                            frameborder="0"
+                            referrerpolicy="strict-origin-when-cross-origin"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                            allowfullscreen>
+                        </iframe>
+                    </body>
+                    </html>
+                """.trimIndent()
+                Pair("https://www.youtube.com", html)
             }
             VideoProvider.VIMEO -> {
                 val vimeoId = block.videoId ?: extractVimeoVideoId(block.videoUrl)
-                if (vimeoId != null) {
+                val embedSrc = if (vimeoId != null) {
                     "https://player.vimeo.com/video/$vimeoId?autoplay=1&playsinline=1&title=0&byline=0&portrait=0"
                 } else {
                     block.videoUrl
                 }
+                val html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                        <meta name="referrer" content="strict-origin-when-cross-origin">
+                        <style>
+                            * { margin:0; padding:0; box-sizing:border-box; background-color:#000; }
+                            html, body { width:100%; height:100%; overflow:hidden; background-color:#000; }
+                            iframe { width:100%; height:100%; border:0; display:block; }
+                        </style>
+                    </head>
+                    <body>
+                        <iframe 
+                            src="$embedSrc" 
+                            frameborder="0"
+                            referrerpolicy="strict-origin-when-cross-origin"
+                            allow="autoplay; fullscreen; picture-in-picture" 
+                            allowfullscreen>
+                        </iframe>
+                    </body>
+                    </html>
+                """.trimIndent()
+                Pair("https://vimeo.com", html)
             }
-            VideoProvider.HTML5, VideoProvider.GENERIC -> {
-                block.videoUrl
+            VideoProvider.HTML5 -> {
+                val html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                        <style>
+                            * { margin:0; padding:0; box-sizing:border-box; background-color:#000; }
+                            html, body { width:100%; height:100%; overflow:hidden; display:flex; align-items:center; justify-content:center; background-color:#000; }
+                            video { width:100%; height:100%; object-fit:contain; }
+                        </style>
+                    </head>
+                    <body>
+                        <video controls autoplay playsinline src="${block.videoUrl}"></video>
+                    </body>
+                    </html>
+                """.trimIndent()
+                Pair("https://stoa.app", html)
+            }
+            VideoProvider.GENERIC -> {
+                val html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                        <meta name="referrer" content="strict-origin-when-cross-origin">
+                        <style>
+                            * { margin:0; padding:0; box-sizing:border-box; background-color:#000; }
+                            html, body { width:100%; height:100%; overflow:hidden; background-color:#000; }
+                            iframe { width:100%; height:100%; border:0; display:block; }
+                        </style>
+                    </head>
+                    <body>
+                        <iframe 
+                            src="${block.videoUrl}" 
+                            frameborder="0"
+                            referrerpolicy="strict-origin-when-cross-origin"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                            allowfullscreen>
+                        </iframe>
+                    </body>
+                    </html>
+                """.trimIndent()
+                Pair("https://stoa.app", html)
             }
         }
     }
@@ -1622,6 +1713,10 @@ private fun InAppVideoPlayer(
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     setBackgroundColor(android.graphics.Color.BLACK)
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptThirdPartyCookies(this, true)
+
                     settings.apply {
                         javaScriptEnabled = true
                         domStorageEnabled = true
@@ -1631,6 +1726,8 @@ private fun InAppVideoPlayer(
                         useWideViewPort = true
                         loadWithOverviewMode = true
                         mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        // Remove WebView token from User Agent so YouTube serves standard mobile player
+                        userAgentString = userAgentString.replace("; wv", "")
                     }
                     webChromeClient = object : WebChromeClient() {
                         override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
@@ -1652,37 +1749,16 @@ private fun InAppVideoPlayer(
 
                         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                             val uri = request?.url ?: return false
-                            val host = uri.host?.lowercase().orEmpty()
-                            if (host.contains("youtube") || host.contains("youtu.be") ||
-                                host.contains("vimeo") || host.contains("googlevideo") ||
-                                host.contains("ytimg") || host.contains("vimeocdn")) {
-                                return false
+                            val urlStr = uri.toString()
+                            if (urlStr.contains("youtube.com/watch") || urlStr.contains("youtu.be/")) {
+                                onOpenExternal()
+                                return true
                             }
                             return false
                         }
                     }
 
-                    if (block.provider == VideoProvider.HTML5 && !embedUrl.contains("<iframe")) {
-                        val html = """
-                            <!DOCTYPE html>
-                            <html>
-                            <head>
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                                <style>
-                                    * { margin:0; padding:0; box-sizing:border-box; background-color:#000; }
-                                    html, body { width:100%; height:100%; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-                                    video { width:100%; height:100%; object-fit:contain; }
-                                </style>
-                            </head>
-                            <body>
-                                <video controls autoplay playsinline src="$embedUrl"></video>
-                            </body>
-                            </html>
-                        """.trimIndent()
-                        loadDataWithBaseURL("https://stoa.reader", html, "text/html", "UTF-8", null)
-                    } else {
-                        loadUrl(embedUrl)
-                    }
+                    loadDataWithBaseURL(baseUrl, htmlContent, "text/html", "UTF-8", null)
                     webViewRef = this
                 }
             },
