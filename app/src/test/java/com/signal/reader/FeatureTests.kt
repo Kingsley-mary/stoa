@@ -142,4 +142,20 @@ class FeatureTests {
         assertEquals("https://example.com/atom.xml", convertScheme("feeds:https://example.com/atom.xml"))
         assertEquals("https://example.com/feed", convertScheme("feeds://example.com/feed"))
     }
+
+    @Test
+    fun testUpdateVersionComparison() {
+        // Newer versions
+        assertTrue(com.signal.reader.data.update.UpdateManager.isVersionStringNewer("1.4.1", "1.4"))
+        assertTrue(com.signal.reader.data.update.UpdateManager.isVersionStringNewer("v1.4.1", "1.4"))
+        assertTrue(com.signal.reader.data.update.UpdateManager.isVersionStringNewer("1.5.0", "1.4.1"))
+        assertTrue(com.signal.reader.data.update.UpdateManager.isVersionStringNewer("2.0", "1.9.9"))
+        assertTrue(com.signal.reader.data.update.UpdateManager.isVersionStringNewer("1.4.10", "1.4.9"))
+
+        // Same or older versions
+        assertFalse(com.signal.reader.data.update.UpdateManager.isVersionStringNewer("1.4.1", "1.4.1"))
+        assertFalse(com.signal.reader.data.update.UpdateManager.isVersionStringNewer("v1.4.1", "1.4.1"))
+        assertFalse(com.signal.reader.data.update.UpdateManager.isVersionStringNewer("1.4", "1.4.1"))
+        assertFalse(com.signal.reader.data.update.UpdateManager.isVersionStringNewer("1.4", "1.4"))
+    }
 }

@@ -115,9 +115,7 @@ class UpdateManager(
                         }
                     }
                 }
-                // Compute version code from major.minor or fallback
-                val code = tag.replace(".", "").toIntOrNull() ?: (currentVersionCode + 1)
-                Quadruple(code, tag, downloadUrl, body)
+                Quadruple(0, tag, downloadUrl, body)
             } else {
                 // Custom / Stoa version.json format
                 val code = json.optInt("versionCode", 0)
@@ -250,17 +248,19 @@ class UpdateManager(
         _updateState.value = UpdateState.Idle
     }
 
-    private fun isVersionStringNewer(remote: String, current: String): Boolean {
-        val rParts = remote.removePrefix("v").split(".").mapNotNull { it.toIntOrNull() }
-        val cParts = current.removePrefix("v").split(".").mapNotNull { it.toIntOrNull() }
-        val maxLen = maxOf(rParts.size, cParts.size)
-        for (i in 0 until maxLen) {
-            val r = rParts.getOrElse(i) { 0 }
-            val c = cParts.getOrElse(i) { 0 }
-            if (r > c) return true
-            if (r < c) return false
+    companion object {
+        internal fun isVersionStringNewer(remote: String, current: String): Boolean {
+            val rParts = remote.removePrefix("v").split(".").mapNotNull { it.toIntOrNull() }
+            val cParts = current.removePrefix("v").split(".").mapNotNull { it.toIntOrNull() }
+            val maxLen = maxOf(rParts.size, cParts.size)
+            for (i in 0 until maxLen) {
+                val r = rParts.getOrElse(i) { 0 }
+                val c = cParts.getOrElse(i) { 0 }
+                if (r > c) return true
+                if (r < c) return false
+            }
+            return false
         }
-        return false
     }
 
     private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
