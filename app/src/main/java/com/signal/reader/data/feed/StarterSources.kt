@@ -95,7 +95,7 @@ object StarterSources {
             name = "swissmiss",
             description = "Visual design curation, tools and inspiration",
             siteUrl = "https://www.swiss-miss.com",
-            feedUrl = "https://www.swiss-miss.com/feed"
+            feedUrl = "https://feeds2.feedburner.com/Swissmiss"
         ),
         StarterSource(
             group = "Product Design",
@@ -349,6 +349,80 @@ object StarterSources {
             description = "Handheld, mobile and indie game coverage",
             siteUrl = "https://toucharcade.com",
             feedUrl = "https://toucharcade.com/feed/"
+        ),
+
+        // Finance & Markets
+        StarterSource(
+            group = "Finance",
+            name = "Business Insider",
+            description = "Business news, financial markets, technology and global trends",
+            siteUrl = "https://www.businessinsider.com",
+            feedUrl = "https://www.businessinsider.com/rss"
+        ),
+        StarterSource(
+            group = "Finance",
+            name = "MarketWatch",
+            description = "Financial market news, real-time stock updates and economic analysis",
+            siteUrl = "https://www.marketwatch.com",
+            feedUrl = "https://feeds.content.dowjones.io/public/rss/mw_topstories"
+        ),
+        StarterSource(
+            group = "Finance",
+            name = "WSJ Markets",
+            description = "Wall Street Journal market reports, stocks, bonds and currencies",
+            siteUrl = "https://www.wsj.com",
+            feedUrl = "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"
+        ),
+        StarterSource(
+            group = "Finance",
+            name = "Forbes",
+            description = "Business strategy, entrepreneurs, wealth, finance and investing",
+            siteUrl = "https://www.forbes.com",
+            feedUrl = "https://www.forbes.com/business/feed/"
+        ),
+        StarterSource(
+            group = "Finance",
+            name = "Fortune",
+            description = "Fortune 500 business insights, global economics and corporate leaders",
+            siteUrl = "https://fortune.com",
+            feedUrl = "https://fortune.com/feed/"
+        ),
+
+        // Politics & Global Affairs
+        StarterSource(
+            group = "Politics",
+            name = "Politico",
+            description = "Political news, elections, legislation and government policy",
+            siteUrl = "https://www.politico.com",
+            feedUrl = "https://rss.politico.com/politics-news.xml"
+        ),
+        StarterSource(
+            group = "Politics",
+            name = "The Hill",
+            description = "Congressional politics, policy debates, campaigns and Capitol Hill",
+            siteUrl = "https://thehill.com",
+            feedUrl = "https://thehill.com/feed/"
+        ),
+        StarterSource(
+            group = "Politics",
+            name = "The Atlantic",
+            description = "In-depth political essays, cultural commentary, ideas and science",
+            siteUrl = "https://www.theatlantic.com",
+            feedUrl = "https://www.theatlantic.com/feed/all/"
+        ),
+        StarterSource(
+            group = "Politics",
+            name = "NPR Politics",
+            description = "National political reporting, elections, Washington and public policy",
+            siteUrl = "https://www.npr.org",
+            feedUrl = "https://feeds.npr.org/1014/rss.xml"
+        ),
+        StarterSource(
+            group = "Politics",
+            name = "Associated Press News",
+            description = "Fast, unbiased global and political news coverage from the AP",
+            siteUrl = "https://apnews.com",
+            feedUrl = "https://news.google.com/rss/headlines/section/topic/POLITICS?hl=en-US&gl=US&ceid=US:en"
         )
     )
 }

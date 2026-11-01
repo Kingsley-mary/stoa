@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.signal.reader.data.feed.ImageResolver
 import com.signal.reader.data.feed.ReadabilityExtractor
 import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.local.entity.ArticleEntity
@@ -238,9 +239,13 @@ fun ReaderScreen(
         }
     }
 
-    val blocks = remember(currentArticle.fullContent, currentArticle.excerpt, extractedHtml, currentArticle.imageUrl) {
+    val effectiveHeroImage = remember(currentArticle) {
+        ImageResolver.getEffectiveCoverImage(currentArticle.imageUrl, currentArticle.fullContent, currentArticle.excerpt)
+    }
+
+    val blocks = remember(currentArticle.fullContent, currentArticle.excerpt, extractedHtml, effectiveHeroImage) {
         val raw = extractedHtml ?: currentArticle.fullContent ?: currentArticle.excerpt
-        parseContentBlocks(raw, heroImageUrl = currentArticle.imageUrl)
+        parseContentBlocks(raw, heroImageUrl = effectiveHeroImage)
     }
 
     val paragraphTexts = remember(blocks) {
@@ -251,10 +256,10 @@ fun ReaderScreen(
         extractedHtml == null && (currentArticle.isExcerptOnly || (currentArticle.fullContent == null && (currentArticle.excerpt.length < 500 || currentArticle.excerpt.split(" ").size < 90)))
     }
 
-    val allArticleImages = remember(currentArticle, blocks) {
+    val allArticleImages = remember(currentArticle, blocks, effectiveHeroImage) {
         val list = mutableListOf<ArticleImage>()
-        if (!currentArticle.imageUrl.isNullOrBlank()) {
-            list.add(ArticleImage(url = currentArticle.imageUrl, caption = currentArticle.title, credit = currentArticle.sourceName))
+        if (!effectiveHeroImage.isNullOrBlank()) {
+            list.add(ArticleImage(url = effectiveHeroImage, caption = currentArticle.title, credit = currentArticle.sourceName))
         }
         for (b in blocks) {
             if (b is ContentBlock.Image && b.url.isNotBlank() && list.none { it.url == b.url }) {
@@ -417,16 +422,16 @@ fun ReaderScreen(
                             .clip(RoundedCornerShape(26.dp))
                             .background(colors.card)
                             .then(
-                                if (!currentArticle.imageUrl.isNullOrBlank()) {
+                                if (!effectiveHeroImage.isNullOrBlank()) {
                                     Modifier.clickable {
                                         activeGalleryIndex = 0
                                     }
                                 } else Modifier
                             )
                     ) {
-                        if (!currentArticle.imageUrl.isNullOrBlank()) {
+                        if (!effectiveHeroImage.isNullOrBlank()) {
                             AsyncImage(
-                                model = currentArticle.imageUrl,
+                                model = effectiveHeroImage,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
@@ -667,8 +672,7 @@ fun ReaderScreen(
 
                             Box(
                                 modifier = Modifier
-                                    .clip(CircleShape)
-                                    .border(1.dp, colors.ink.copy(alpha = 0.7f), CircleShape)
+                                    .border(1.dp, colors.ink, CircleShape)
                                     .signalPressScale(0.96f) {
                                         haptics.tick()
                                         settingsManager.updateTheme(if (isDarkActive) "light" else "dark")
@@ -703,8 +707,7 @@ fun ReaderScreen(
                             // 2. Single Typeface Switcher Button (switches between Sans and Serif)
                             Box(
                                 modifier = Modifier
-                                    .clip(CircleShape)
-                                    .border(1.dp, colors.ink.copy(alpha = 0.7f), CircleShape)
+                                    .border(1.dp, colors.ink, CircleShape)
                                     .signalPressScale(0.96f) {
                                         haptics.tick()
                                         settingsManager.updateFontFamily(if (isSerif) "sans" else "serif")
@@ -712,23 +715,13 @@ fun ReaderScreen(
                                     .padding(horizontal = 14.dp, vertical = 7.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = if (isSerif) "Aa Serif" else "Aa Sans",
-                                        color = colors.ink,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        fontFamily = if (isSerif) FontFamily.Serif else SignalTheme.typography.screenTitle.fontFamily
-                                    )
-                                    Text(
-                                        text = "⟲",
-                                        color = colors.mute,
-                                        fontSize = 11.sp
-                                    )
-                                }
+                                Text(
+                                    text = if (isSerif) "Aa Serif" else "Aa Sans",
+                                    color = colors.ink,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    fontFamily = if (isSerif) FontFamily.Serif else SignalTheme.typography.screenTitle.fontFamily
+                                )
                             }
                         }
                     }

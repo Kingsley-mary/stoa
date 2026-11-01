@@ -17,14 +17,17 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -37,6 +40,7 @@ import com.signal.reader.ui.browser.BrowserScreen
 import com.signal.reader.ui.components.SignalBottomBar
 import com.signal.reader.ui.components.SignalTab
 import com.signal.reader.ui.home.HomeScreen
+import com.signal.reader.ui.onboarding.InterestsOnboardingScreen
 import com.signal.reader.ui.reader.ReaderScreen
 import com.signal.reader.ui.saved.SavedScreen
 import com.signal.reader.ui.search.SearchScreen
@@ -48,6 +52,7 @@ import com.signal.reader.ui.sources.SourcesScreen
 import com.signal.reader.ui.splash.SplashScreen
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -94,6 +99,7 @@ fun SignalAppNav(
     initialDestination: String? = null
 ) {
     val navController = rememberNavController()
+    val scope = rememberCoroutineScope()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
@@ -141,11 +147,12 @@ fun SignalAppNav(
     Scaffold(
         containerColor = colors.bg,
         contentColor = colors.ink,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             AnimatedVisibility(
                 visible = isBottomBarVisible,
-                enter = fadeIn(tween(200)),
-                exit = fadeOut(tween(200))
+                enter = fadeIn(tween(150)),
+                exit = fadeOut(tween(150))
             ) {
                 SignalBottomBar(
                     currentTab = currentTab,
@@ -171,7 +178,7 @@ fun SignalAppNav(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.bg)
-                .padding(innerPadding)
+                .padding(bottom = if (isBottomBarVisible) innerPadding.calculateBottomPadding() else 0.dp)
         ) {
             @OptIn(ExperimentalSharedTransitionApi::class)
             SharedTransitionLayout(
@@ -222,19 +229,27 @@ fun SignalAppNav(
                         )
                     }
 
-                    // First Launch Add Sources Screen
+                    // First Launch Interest-Based Onboarding Screen
                     composable("first_launch") {
-                        AddSourcesScreen(
-                            isFirstLaunch = true,
+                        InterestsOnboardingScreen(
                             repository = app.repository,
-                            onFinish = {
-                                app.settingsManager.setFirstLaunchCompleted(true)
+                            onFinish = { sources, pickedTopics ->
+                                scope.launch {
+                                    app.repository.addCatalogSourcesBatch(sources)
+                                    app.settingsManager.updateUserInterests(pickedTopics)
+                                    app.settingsManager.setFirstLaunchCompleted(true)
+                                }
                                 navController.navigate("home") {
                                     popUpTo("first_launch") { inclusive = true }
                                 }
                             },
+                            onPasteSiteInstead = {
+                                navController.navigate("add_sources")
+                            },
                             onSkip = {
-                                app.settingsManager.setFirstLaunchCompleted(true)
+                                scope.launch {
+                                    app.settingsManager.setFirstLaunchCompleted(true)
+                                }
                                 navController.navigate("home") {
                                     popUpTo("first_launch") { inclusive = true }
                                 }
@@ -277,7 +292,12 @@ fun SignalAppNav(
                                 navController.navigate("settings")
                             },
                             onAddSourcesClick = {
-                                navController.navigate("add_sources")
+                                val userInterests = app.settingsManager.settingsFlow.value.userInterests
+                                if (userInterests.isEmpty()) {
+                                    navController.navigate("first_launch")
+                                } else {
+                                    navController.navigate("add_sources")
+                                }
                             },
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this@composable
@@ -322,7 +342,12 @@ fun SignalAppNav(
                                 navController.navigate("source_page/$sourceId")
                             },
                             onAddSourcesClick = {
-                                navController.navigate("add_sources")
+                                val userInterests = app.settingsManager.settingsFlow.value.userInterests
+                                if (userInterests.isEmpty()) {
+                                    navController.navigate("first_launch")
+                                } else {
+                                    navController.navigate("add_sources")
+                                }
                             }
                         )
                     }
@@ -373,6 +398,9 @@ fun SignalAppNav(
                         AddSourcesScreen(
                             isFirstLaunch = false,
                             repository = app.repository,
+                            onOpenInterests = {
+                                navController.navigate("first_launch")
+                            },
                             onFinish = {
                                 navController.popBackStack()
                             },
@@ -471,6 +499,7 @@ fun SignalAppNav(
                         SettingsScreen(
                             settingsManager = app.settingsManager,
                             repository = app.repository,
+                            updateManager = app.updateManager,
                             onBack = {
                                 navController.popBackStack()
                             },

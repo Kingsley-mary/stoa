@@ -13,8 +13,8 @@ android {
         applicationId = "com.signal.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 6
+        versionName = "1.4.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -44,6 +44,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {
@@ -93,4 +94,57 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("xmlpull:xmlpull:1.1.3.4d_b4_min")
     testImplementation("net.sf.kxml:kxml2:2.3.0")
+}
+
+val syncCatalogIntentFilters = tasks.register("syncCatalogIntentFilters") {
+    val catalogFile = file("src/main/assets/catalog.json")
+    val manifestFile = file("src/main/AndroidManifest.xml")
+    inputs.file(catalogFile)
+    outputs.file(manifestFile)
+    doLast {
+        if (!catalogFile.exists() || !manifestFile.exists()) return@doLast
+        val jsonText = catalogFile.readText()
+        val hostRegex = """"siteUrl"\s*:\s*"https?://([^/"]+)""".toRegex()
+        val hosts = hostRegex.findAll(jsonText).map { match ->
+            var host = match.groupValues[1].lowercase()
+            if (host.startsWith("www.")) {
+                host = host.removePrefix("www.")
+            }
+            host
+        }.toSet().sorted()
+
+        val filterBuilder = StringBuilder()
+        filterBuilder.append("<!-- BEGIN GENERATED CATALOG DOMAIN FILTERS -->\n")
+        filterBuilder.append("            <intent-filter android:autoVerify=\"true\">\n")
+        filterBuilder.append("                <action android:name=\"android.intent.action.VIEW\" />\n")
+        filterBuilder.append("                <category android:name=\"android.intent.category.DEFAULT\" />\n")
+        filterBuilder.append("                <category android:name=\"android.intent.category.BROWSABLE\" />\n")
+        filterBuilder.append("                <data android:scheme=\"http\" />\n")
+        filterBuilder.append("                <data android:scheme=\"https\" />\n")
+        for (host in hosts) {
+            filterBuilder.append("                <data android:host=\"$host\" />\n")
+            filterBuilder.append("                <data android:host=\"*.$host\" />\n")
+        }
+        filterBuilder.append("            </intent-filter>\n")
+        filterBuilder.append("            <!-- END GENERATED CATALOG DOMAIN FILTERS -->")
+
+        val generatedXml = filterBuilder.toString()
+        val manifestContent = manifestFile.readText()
+        val beginMarker = "<!-- BEGIN GENERATED CATALOG DOMAIN FILTERS -->"
+        val endMarker = "<!-- END GENERATED CATALOG DOMAIN FILTERS -->"
+
+        if (manifestContent.contains(beginMarker) && manifestContent.contains(endMarker)) {
+            val before = manifestContent.substringBefore(beginMarker)
+            val after = manifestContent.substringAfter(endMarker)
+            val newContent = before + generatedXml + after
+            if (newContent != manifestContent) {
+                manifestFile.writeText(newContent)
+                println("Generated intent filters for ${hosts.size} catalog domains into AndroidManifest.xml")
+            }
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn(syncCatalogIntentFilters)
 }

@@ -64,6 +64,7 @@ import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -90,6 +91,7 @@ fun SourcePageScreen(
 
     var showUnfollowConfirm by remember { mutableStateOf(false) }
     var statusNote by remember { mutableStateOf<String?>(null) }
+    var isRetrying by remember { mutableStateOf(false) }
 
     val heroArticle = remember(articles) {
         articles.firstOrNull { !it.imageUrl.isNullOrBlank() } ?: articles.firstOrNull()
@@ -116,6 +118,22 @@ fun SourcePageScreen(
             coroutineScope.launch { unfoldOffsetY.animateTo(0f, SignalMotion.easeTween(350)) }
             coroutineScope.launch { unfoldScale.animateTo(1f, SignalMotion.easeTween(350)) }
             coroutineScope.launch { unfoldAlpha.animateTo(1f, SignalMotion.easeTween(350)) }
+        }
+    }
+
+    LaunchedEffect(statusNote) {
+        if (statusNote != null) {
+            delay(4000L)
+            statusNote = null
+        }
+    }
+
+    LaunchedEffect(source) {
+        if (source == null) {
+            delay(600)
+            if (source == null) {
+                onBack()
+            }
         }
     }
 
@@ -244,18 +262,22 @@ fun SourcePageScreen(
                                 Box(
                                     modifier = Modifier
                                         .clip(CircleShape)
-                                        .background(colors.ink)
-                                        .signalPressScale(0.96f)
-                                        .clickable {
-                                            coroutineScope.launch {
+                                        .background(if (isRetrying) colors.mute.copy(alpha = 0.5f) else colors.ink)
+                                        .signalPressScale(0.96f) {
+                                            if (!isRetrying) {
                                                 haptics.tick()
-                                                repository.refreshSource(currentSource.id)
+                                                isRetrying = true
+                                                coroutineScope.launch {
+                                                    repository.refreshSource(currentSource.id)
+                                                    isRetrying = false
+                                                }
                                             }
                                         }
-                                        .padding(horizontal = 16.dp, vertical = 9.dp)
+                                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = "Retry",
+                                        text = if (isRetrying) "Checking…" else "Retry",
                                         color = colors.bg,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Medium
@@ -284,12 +306,8 @@ fun SourcePageScreen(
                                         showUnfollowConfirm = true
                                     } else {
                                         coroutineScope.launch {
-                                            repository.addSource(
-                                                currentSource.name,
-                                                currentSource.siteUrl,
-                                                currentSource.feedUrl,
-                                                currentSource.description
-                                            )
+                                            repository.setFollowed(currentSource.id, true)
+                                            repository.refreshSource(currentSource.id)
                                             statusNote = null
                                         }
                                     }

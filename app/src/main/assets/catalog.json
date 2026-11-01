@@ -1,0 +1,352 @@
+[
+  {
+    "name": "Creative Boom",
+    "description": "Daily stories on illustration, graphic design, photography and creative work",
+    "siteUrl": "https://www.creativeboom.com",
+    "feedUrl": "https://www.creativeboom.com/feed/",
+    "topics": ["Design", "Illustration", "Photography", "Art"]
+  },
+  {
+    "name": "Dezeen",
+    "description": "Architecture, interiors and modern design magazine",
+    "siteUrl": "https://www.dezeen.com",
+    "feedUrl": "https://www.dezeen.com/feed/",
+    "topics": ["Architecture", "Interiors", "Design"]
+  },
+  {
+    "name": "WALLPAPER*",
+    "description": "Design, interiors, fashion, architecture and luxury culture",
+    "siteUrl": "https://www.wallpaper.com",
+    "feedUrl": "https://www.wallpaper.com/feeds/rss",
+    "topics": ["Interiors", "Design", "Fashion", "Architecture"]
+  },
+  {
+    "name": "Designboom",
+    "description": "Architecture, design, art and technology",
+    "siteUrl": "https://www.designboom.com",
+    "feedUrl": "https://www.designboom.com/feed/",
+    "topics": ["Design", "Architecture", "Art"]
+  },
+  {
+    "name": "Colossal",
+    "description": "Contemporary art, visual culture, craft and photography",
+    "siteUrl": "https://www.thisiscolossal.com",
+    "feedUrl": "https://www.thisiscolossal.com/feed/",
+    "topics": ["Art", "Illustration", "Photography"]
+  },
+  {
+    "name": "ArchDaily",
+    "description": "The world's most visited architecture and interior design publication",
+    "siteUrl": "https://www.archdaily.com",
+    "feedUrl": "https://www.archdaily.com/rss.xml",
+    "topics": ["Architecture", "Interiors"]
+  },
+  {
+    "name": "Typewolf",
+    "description": "Curated typography inspiration, web fonts and type design",
+    "siteUrl": "https://www.typewolf.com",
+    "feedUrl": "https://www.typewolf.com/feed",
+    "topics": ["Typography", "Design"]
+  },
+  {
+    "name": "I Love Typography",
+    "description": "Typography history, font design, books and calligraphy",
+    "siteUrl": "https://ilovetypography.com",
+    "feedUrl": "https://ilovetypography.com/feed/",
+    "topics": ["Typography", "Design"]
+  },
+  {
+    "name": "BP&O",
+    "description": "Branding, packaging and graphic design opinions",
+    "siteUrl": "https://bpando.org",
+    "feedUrl": "https://bpando.org/feed/",
+    "topics": ["Branding", "Design", "Typography"]
+  },
+  {
+    "name": "Identity Designed",
+    "description": "Brand identities, visual systems and design studios",
+    "siteUrl": "https://identitydesigned.com",
+    "feedUrl": "https://identitydesigned.com/feed/",
+    "topics": ["Branding", "Design", "Typography"]
+  },
+  {
+    "name": "PetaPixel",
+    "description": "Photography news, camera reviews, gear and techniques",
+    "siteUrl": "https://petapixel.com",
+    "feedUrl": "https://petapixel.com/feed/",
+    "topics": ["Photography", "Gadgets", "Art"]
+  },
+  {
+    "name": "Juxtapoz",
+    "description": "Underground contemporary art, graffiti, illustration and culture",
+    "siteUrl": "https://www.juxtapoz.com",
+    "feedUrl": "https://www.juxtapoz.com/feed/",
+    "topics": ["Art", "Illustration", "Culture"]
+  },
+  {
+    "name": "Hyperallergic",
+    "description": "Playful, serious and radical perspectives on art and culture",
+    "siteUrl": "https://hyperallergic.com",
+    "feedUrl": "https://hyperallergic.com/feed/",
+    "topics": ["Art", "Culture"]
+  },
+  {
+    "name": "Artforum",
+    "description": "International art criticism, gallery exhibitions and essays",
+    "siteUrl": "https://www.artforum.com",
+    "feedUrl": "https://www.artforum.com/feed/",
+    "topics": ["Art", "Culture"]
+  },
+  {
+    "name": "Hypebeast",
+    "description": "Men's fashion, streetwear, contemporary art and music",
+    "siteUrl": "https://hypebeast.com",
+    "feedUrl": "https://hypebeast.com/feed",
+    "topics": ["Fashion", "Culture", "Music"]
+  },
+  {
+    "name": "Highsnobiety",
+    "description": "Streetwear, luxury style, sneaker culture and designer news",
+    "siteUrl": "https://www.highsnobiety.com",
+    "feedUrl": "https://www.highsnobiety.com/feed/",
+    "topics": ["Fashion", "Culture"]
+  },
+  {
+    "name": "GQ",
+    "description": "Men's style, culture, entertainment and fashion reporting",
+    "siteUrl": "https://www.gq.com",
+    "feedUrl": "https://www.gq.com/feed/rss",
+    "topics": ["Fashion", "Culture"]
+  },
+  {
+    "name": "WIRED",
+    "description": "Emerging technology, artificial intelligence, science and digital culture",
+    "siteUrl": "https://www.wired.com",
+    "feedUrl": "https://www.wired.com/feed/rss",
+    "topics": ["Tech", "AI", "Science", "Culture"]
+  },
+  {
+    "name": "The Verge",
+    "description": "Technology, gadgets, science, artificial intelligence and gaming",
+    "siteUrl": "https://www.theverge.com",
+    "feedUrl": "https://www.theverge.com/rss/index.xml",
+    "topics": ["Tech", "Gadgets", "AI", "Games"]
+  },
+  {
+    "name": "Ars Technica",
+    "description": "Original technology reporting, science, policy and gadget analysis",
+    "siteUrl": "https://arstechnica.com",
+    "feedUrl": "https://feeds.arstechnica.com/arstechnica/index",
+    "topics": ["Tech", "Science", "Gadgets"]
+  },
+  {
+    "name": "TechCrunch",
+    "description": "Startup business, technology news, venture capital and AI",
+    "siteUrl": "https://techcrunch.com",
+    "feedUrl": "https://techcrunch.com/feed/",
+    "topics": ["Tech", "Business", "AI"]
+  },
+  {
+    "name": "Engadget",
+    "description": "Consumer gadgets, consumer tech, gaming and hardware reviews",
+    "siteUrl": "https://www.engadget.com",
+    "feedUrl": "https://www.engadget.com/rss.xml",
+    "topics": ["Tech", "Gadgets", "AI"]
+  },
+  {
+    "name": "MIT Technology Review",
+    "description": "Authoritative journalism on emerging tech, computing and AI",
+    "siteUrl": "https://www.technologyreview.com",
+    "feedUrl": "https://www.technologyreview.com/feed/",
+    "topics": ["Tech", "AI", "Science"]
+  },
+  {
+    "name": "9to5Mac",
+    "description": "Apple hardware, software ecosystems, gadgets and mobile tech",
+    "siteUrl": "https://9to5mac.com",
+    "feedUrl": "https://9to5mac.com/feed/",
+    "topics": ["Tech", "Gadgets"]
+  },
+  {
+    "name": "Polygon",
+    "description": "Video games, gaming culture, entertainment and film",
+    "siteUrl": "https://www.polygon.com",
+    "feedUrl": "https://www.polygon.com/rss/index.xml",
+    "topics": ["Games", "Film"]
+  },
+  {
+    "name": "IGN",
+    "description": "Video games, entertainment news, trailers, gaming walkthroughs and film",
+    "siteUrl": "https://www.ign.com",
+    "feedUrl": "https://feeds.feedburner.com/ign/all",
+    "topics": ["Games", "Film", "Tech"]
+  },
+  {
+    "name": "Kotaku",
+    "description": "Video games, gaming industry reporting and modern player culture",
+    "siteUrl": "https://kotaku.com",
+    "feedUrl": "https://kotaku.com/rss",
+    "topics": ["Games", "Tech", "Culture"]
+  },
+  {
+    "name": "Eurogamer",
+    "description": "European gaming news, reviews, digital foundry technical analysis",
+    "siteUrl": "https://www.eurogamer.net",
+    "feedUrl": "https://www.eurogamer.net/feed",
+    "topics": ["Games", "Tech"]
+  },
+  {
+    "name": "PC Gamer",
+    "description": "PC gaming hardware, graphics cards, indie games and modding",
+    "siteUrl": "https://www.pcgamer.com",
+    "feedUrl": "https://www.pcgamer.com/rss",
+    "topics": ["Games", "Tech", "Gadgets"]
+  },
+  {
+    "name": "Rock Paper Shotgun",
+    "description": "PC gaming culture, indie games, narrative and reviews",
+    "siteUrl": "https://www.rockpapershotgun.com",
+    "feedUrl": "https://www.rockpapershotgun.com/feed",
+    "topics": ["Games", "Tech"]
+  },
+  {
+    "name": "IndieWire",
+    "description": "Independent film, cinema, directors, festivals and television",
+    "siteUrl": "https://www.indiewire.com",
+    "feedUrl": "https://www.indiewire.com/feed/",
+    "topics": ["Film", "Culture"]
+  },
+  {
+    "name": "SlashFilm",
+    "description": "Movie news, directors, cinema commentary and film critique",
+    "siteUrl": "https://www.slashfilm.com",
+    "feedUrl": "https://www.slashfilm.com/feed/",
+    "topics": ["Film", "Culture"]
+  },
+  {
+    "name": "Screen Rant",
+    "description": "Television, movies, streaming originals and comic cinema",
+    "siteUrl": "https://screenrant.com",
+    "feedUrl": "https://screenrant.com/feed/",
+    "topics": ["Film", "Culture", "Games"]
+  },
+  {
+    "name": "Pitchfork",
+    "description": "Essential music criticism, indie music, new releases and festival news",
+    "siteUrl": "https://pitchfork.com",
+    "feedUrl": "https://pitchfork.com/feed/feed-news/rss",
+    "topics": ["Music", "Culture"]
+  },
+  {
+    "name": "Stereogum",
+    "description": "Indie rock, pop music news, album premieres and track reviews",
+    "siteUrl": "https://www.stereogum.com",
+    "feedUrl": "https://www.stereogum.com/feed/",
+    "topics": ["Music", "Culture"]
+  },
+  {
+    "name": "Consequence",
+    "description": "Music reviews, festival coverage, pop culture and film news",
+    "siteUrl": "https://consequence.net",
+    "feedUrl": "https://consequence.net/feed/",
+    "topics": ["Music", "Film", "Culture"]
+  },
+  {
+    "name": "Quanta Magazine",
+    "description": "Pure mathematics, theoretical physics, biology and computer science",
+    "siteUrl": "https://www.quantamagazine.org",
+    "feedUrl": "https://api.quantamagazine.org/feed/",
+    "topics": ["Science", "Tech"]
+  },
+  {
+    "name": "Scientific American",
+    "description": "Expert insights, scientific discoveries, nature and research",
+    "siteUrl": "https://www.scientificamerican.com",
+    "feedUrl": "http://rss.sciam.com/ScientificAmerican-Global",
+    "topics": ["Science", "Culture"]
+  },
+  {
+    "name": "New Scientist",
+    "description": "International science news, astrophysics, climate and human origins",
+    "siteUrl": "https://www.newscientist.com",
+    "feedUrl": "https://www.newscientist.com/feed/home/",
+    "topics": ["Science", "Tech"]
+  },
+  {
+    "name": "Fast Company",
+    "description": "Business leadership, technology, innovation, design and branding",
+    "siteUrl": "https://www.fastcompany.com",
+    "feedUrl": "https://www.fastcompany.com/latest/rss",
+    "topics": ["Business", "Tech", "Design", "Branding"]
+  },
+  {
+    "name": "Business Insider",
+    "description": "Business news, financial markets, technology and global politics",
+    "siteUrl": "https://www.businessinsider.com",
+    "feedUrl": "https://www.businessinsider.com/rss",
+    "topics": ["Business", "Finance", "Tech", "Politics"]
+  },
+  {
+    "name": "Forbes",
+    "description": "Business strategy, entrepreneurs, wealth, finance and investing",
+    "siteUrl": "https://www.forbes.com",
+    "feedUrl": "https://www.forbes.com/business/feed/",
+    "topics": ["Business", "Finance", "Tech"]
+  },
+  {
+    "name": "Fortune",
+    "description": "Fortune 500 business insights, global economics and corporate leaders",
+    "siteUrl": "https://fortune.com",
+    "feedUrl": "https://fortune.com/feed/",
+    "topics": ["Business", "Finance", "Tech"]
+  },
+  {
+    "name": "MarketWatch",
+    "description": "Financial market news, real-time stock updates and economic analysis",
+    "siteUrl": "https://www.marketwatch.com",
+    "feedUrl": "https://feeds.content.dowjones.io/public/rss/mw_topstories",
+    "topics": ["Finance", "Business"]
+  },
+  {
+    "name": "WSJ Markets",
+    "description": "Wall Street Journal market reports, stocks, bonds and currencies",
+    "siteUrl": "https://www.wsj.com",
+    "feedUrl": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+    "topics": ["Finance", "Business"]
+  },
+  {
+    "name": "Politico",
+    "description": "Political news, elections, legislation and government policy",
+    "siteUrl": "https://www.politico.com",
+    "feedUrl": "https://rss.politico.com/politics-news.xml",
+    "topics": ["Politics", "Culture"]
+  },
+  {
+    "name": "The Hill",
+    "description": "Congressional politics, policy debates, campaigns and Capitol Hill",
+    "siteUrl": "https://thehill.com",
+    "feedUrl": "https://thehill.com/feed/",
+    "topics": ["Politics"]
+  },
+  {
+    "name": "The Atlantic",
+    "description": "In-depth political essays, cultural commentary, ideas and science",
+    "siteUrl": "https://www.theatlantic.com",
+    "feedUrl": "https://www.theatlantic.com/feed/all/",
+    "topics": ["Politics", "Culture", "Science"]
+  },
+  {
+    "name": "NPR Politics",
+    "description": "National political reporting, elections, Washington and public policy",
+    "siteUrl": "https://www.npr.org",
+    "feedUrl": "https://feeds.npr.org/1014/rss.xml",
+    "topics": ["Politics", "Culture"]
+  },
+  {
+    "name": "Associated Press News",
+    "description": "Fast, unbiased global and political news coverage from the AP",
+    "siteUrl": "https://apnews.com",
+    "feedUrl": "https://news.google.com/rss/headlines/section/topic/POLITICS?hl=en-US&gl=US&ceid=US:en",
+    "topics": ["Politics"]
+  }
+]

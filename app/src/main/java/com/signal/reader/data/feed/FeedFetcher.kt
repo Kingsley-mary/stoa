@@ -11,6 +11,10 @@ class FeedFetcher(
     private val client: OkHttpClient = createDefaultClient()
 ) {
     suspend fun fetch(url: String): Pair<String, String?> = withContext(Dispatchers.IO) {
+        if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) {
+            throw IllegalArgumentException("Only HTTP and HTTPS URLs are accepted: $url")
+        }
+
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", USER_AGENT)
@@ -21,7 +25,17 @@ class FeedFetcher(
             if (!response.isSuccessful) {
                 throw IOException("Unexpected HTTP response code ${response.code} for $url")
             }
-            val body = response.body?.string() ?: throw IOException("Empty response body for $url")
+            val responseBody = response.body ?: throw IOException("Empty response body for $url")
+            val maxBytes = 5 * 1024 * 1024 // 5 MB cap
+            val body = responseBody.byteStream().use { input ->
+                val buffer = ByteArray(maxBytes)
+                var total = 0
+                var read = 0
+                while (total < maxBytes && input.read(buffer, total, maxBytes - total).also { read = it } != -1) {
+                    total += read
+                }
+                String(buffer, 0, total, Charsets.UTF_8)
+            }
             val contentType = response.header("Content-Type")
             Pair(body, contentType)
         }
@@ -33,14 +47,31 @@ class FeedFetcher(
     }
 
     companion object {
-        const val USER_AGENT = "StoaReader/1.2 (Android; RSS Reader; +https://github.com/stoa/reader)"
+        const val USER_AGENT = "StoaReader/1.4 (Android; RSS Reader; +https://github.com/stoa/reader)"
 
         fun createDefaultClient(): OkHttpClient {
             return OkHttpClient.Builder()
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(20, TimeUnit.SECONDS)
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
                 .followRedirects(true)
                 .followSslRedirects(true)
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    var response = chain.proceed(request)
+                    var redirectCount = 0
+                    while (response.isRedirect && redirectCount < 5) {
+                        val location = response.header("Location") ?: break
+                        response.close()
+                        redirectCount++
+                        val nextUrl = if (location.startsWith("/")) {
+                            val original = request.url
+                            "${original.scheme}://${original.host}$location"
+                        } else location
+                        val newRequest = request.newBuilder().url(nextUrl).build()
+                        response = chain.proceed(newRequest)
+                    }
+                    response
+                }
                 .build()
         }
     }

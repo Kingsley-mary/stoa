@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Open with Stoa – mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<style>
+/* Where this screen comes from (for the build):
+   1. Tapping a feed link in another app: a feed: or feeds: link, or a link whose type is application/rss+xml or application/atom+xml
+   2. Share > Stoa on any web page (plain-text share of a URL), which runs feed discovery first
+   It is a full screen, not a pop-up. The close button returns to the app the person came from.
+   MOTION TOKENS: card unfolds .35s ease-out | preview rows rise 40ms apart | progress line 30% at .15s, 70% at .6s | Added check pops .45s spring | press .18s spring | reduced motion: all off */
+:root{--bg:#EEEAE1;--ink:#141413;--mute:#6B665C;--line:rgba(20,20,19,.16);--card:#D6CFBF;--acc:#E4472B;--ease:cubic-bezier(.2,.8,.2,1);--spring:cubic-bezier(.34,1.56,.64,1)}
+@media (prefers-color-scheme:dark){:root{--bg:#10100F;--ink:#F1EDE4;--mute:#9C978B;--line:rgba(241,237,228,.18);--card:#242320}}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+body{display:grid;grid-template-rows:auto minmax(0,1fr);height:100vh;overflow:hidden;background:var(--bg);color:var(--ink);font-family:"Archivo","Helvetica Neue",Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;transition:transform .18s var(--spring),background-color .2s,color .2s,opacity .2s}
+button:not(:disabled):active{transform:scale(.96)}
+.devbar{display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;padding:6px 8px;font-size:12px;color:var(--mute);border-bottom:1px dashed var(--line)}
+.devbar button{border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px}
+.devbar button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.app{width:100%;max-width:430px;height:100%;margin:0 auto;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;padding-top:calc(8px + env(safe-area-inset-top))}
+header button{width:44px;height:44px;display:grid;place-items:center}
+.x{position:relative;width:16px;height:16px}.x::before,.x::after{content:"";position:absolute;left:0;top:7px;width:16px;height:1.5px;background:var(--ink);transform:rotate(45deg)}.x::after{transform:rotate(-45deg)}
+.from{font-size:12px;color:var(--mute);padding-right:10px}
+.pg{height:2px}#bar{display:block;height:2px;width:0;background:var(--ink);transition:width .4s var(--ease),opacity .2s}
+main{flex:1;overflow-y:auto;padding-bottom:20px}
+h1{font-size:40px;line-height:.96;text-transform:uppercase;font-weight:800;font-stretch:112%;letter-spacing:-.02em;padding:26px 20px 0}
+.lead{padding:14px 20px 0;font-size:15px;line-height:1.4;color:var(--mute);max-width:34ch}
+.src{margin:24px 20px 0;padding:18px;border:1px solid var(--line);border-radius:22px;animation:unfold .35s var(--ease)}
+.srow{display:flex;gap:14px;align-items:center}
+.mono{flex:none;width:56px;height:56px;border-radius:16px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-weight:800;font-stretch:125%;font-size:18px}
+.srow b{display:block;font-size:20px;font-weight:700;letter-spacing:-.01em}.srow span{display:block;margin-top:4px;font-size:13px;color:var(--mute);word-break:break-all}
+.src p{margin-top:14px;font-size:15px;line-height:1.4;color:var(--mute)}
+.sk i{display:block;height:14px;border-radius:7px;background:var(--line);margin-top:12px;animation:pulse 1.1s ease-in-out infinite}.sk i:first-child{margin:0;height:56px;border-radius:16px;width:56px}
+@keyframes pulse{50%{opacity:.4}}
+.sec{padding:28px 20px 10px;font-size:13px;color:var(--mute)}
+.row{padding:16px 20px;border-top:1px solid var(--line)}.row h3{font-size:17px;line-height:1.15;font-weight:700;letter-spacing:-.01em}.row span{display:block;margin-top:8px;font-size:12px;color:var(--mute)}
+footer{padding:14px 20px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.big{display:block;width:100%;border-radius:999px;padding:17px;font-size:15px;font-weight:500;background:var(--ink);color:var(--bg)}
+.ghost{width:100%;padding:12px;font-size:14px;color:var(--mute)}
+.check{display:inline-grid;place-items:center;width:46px;height:46px;border-radius:50%;background:var(--acc);color:#fff;font-size:22px;margin:26px 20px 0;animation:pop .45s var(--spring)}
+.in{animation:rise .35s var(--ease) backwards;animation-delay:calc(var(--i,0)*40ms)}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}@keyframes unfold{from{opacity:0;transform:translateY(-8px) scale(.98)}}@keyframes pop{0%{transform:scale(.6)}50%{transform:scale(1.3)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="devbar">Mockup only
+  <button data-s="feed" class="on">Feed link</button><button data-s="shared">Shared page</button><button data-s="already">Already following</button><button data-s="none">No feed</button>
+</div>
+<div class="app">
+  <header><button id="close" aria-label="Close and go back to the other app"><span class="x"></span></button><span class="from" id="from">From Chrome</span></header>
+  <div class="pg"><i id="bar"></i></div>
+  <main id="main"></main>
+  <footer id="foot"></footer>
+</div>
+<script>
+const $=s=>document.querySelector(s), bar=$("#bar");
+const tick=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
+let timer=null;
+const SRC={n:"Creative Boom",ini:"CB",feed:"creativeboom.com/feed",d:"Daily stories on illustration, graphic design, photography and the people making creative work."};
+const LATEST=[["A patchwork bear that’s part toy, part nightmare","1 hr ago"],["Ten illustrators redrawing the city map","Yesterday"],["The case for drawing badly on purpose","2 days ago"]];
+const card=()=>`<div class="src"><div class="srow"><div class="mono">${SRC.ini}</div><div><b>${SRC.n}</b><span>${SRC.feed}</span></div></div><p>${SRC.d}</p></div>`;
+const preview=()=>`<p class="sec">Latest from this feed</p>`+LATEST.map(([t,a],i)=>`<div class="row in" style="--i:${i}"><h3>${t}</h3><span>${a}</span></div>`).join("");
+
+function progress(run){clearTimeout(timer);bar.style.opacity=1;bar.style.transition="none";bar.style.width="0";void bar.offsetWidth;bar.style.transition="";if(run){setTimeout(()=>bar.style.width="30%",150);setTimeout(()=>bar.style.width="70%",600)}}
+const finish=()=>{bar.style.width="100%";setTimeout(()=>{bar.style.opacity=0},350)};
+function show(s,auto){
+  document.querySelectorAll("[data-s]").forEach(b=>b.classList.toggle("on",b.dataset.s===s));
+  $("#from").textContent=s==="shared"?"Shared from Chrome":"From Chrome";
+  const M=$("#main"), F=$("#foot");
+  if(s==="shared"||s==="looking"){
+    progress(true); M.innerHTML=`<h1>Looking for a feed…</h1><p class="lead">Checking the page for a feed Stoa can read.</p><div class="src sk"><i></i><i style="width:60%"></i><i></i></div>`;
+    F.innerHTML=`<button class="ghost" id="cancel">Cancel</button>`;
+    if(auto!==false) timer=setTimeout(()=>show("feed"),1500);
+  } else if(s==="feed"){
+    finish(); M.innerHTML=`<h1>Add this feed?</h1><p class="lead">It will be added to your sources and its latest articles will appear on Home.</p>${card()}${preview()}`;
+    F.innerHTML=`<button class="big" id="add">Add to Stoa</button><button class="ghost" id="cancel">Cancel</button>`;
+  } else if(s==="already"){
+    finish(); M.innerHTML=`<h1>Already in Stoa</h1><p class="lead">You follow ${SRC.n} already. Nothing to add.</p>${card()}`;
+    F.innerHTML=`<button class="big" id="openstoa">Open ${SRC.n}</button><button class="ghost" id="cancel">Close</button>`;
+  } else if(s==="none"){
+    finish(); M.innerHTML=`<h1>No feed here</h1><p class="lead">This link isn’t a feed Stoa can read. The site may still offer one.</p>`;
+    F.innerHTML=`<button class="big" id="look">Look for a feed on this site</button><button class="ghost" id="cancel">Close</button>`;
+  } else if(s==="added"){
+    finish(); M.innerHTML=`<span class="check">✓</span><h1>Added</h1><p class="lead">${SRC.n} is in your sources. 24 articles are ready.</p>`;
+    F.innerHTML=`<button class="big" id="openstoa">Open Stoa</button><button class="ghost" id="cancel">Back to Chrome</button>`;
+  }
+}
+document.addEventListener("click",e=>{
+  const id=e.target.id;
+  if(id==="add"){tick();show("added")}
+  if(id==="look")show("looking");
+  if(id==="cancel"||e.target.closest("#close"))show("feed");
+});
+document.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>show(b.dataset.s,b.dataset.s==="shared"));
+show("feed");
+</script>
+</body>
+</html>

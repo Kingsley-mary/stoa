@@ -93,8 +93,7 @@ object FeedParser {
         var pubDateStr = ""
         var description = ""
         var contentEncoded = ""
-        var mediaUrl: String? = null
-        var enclosureUrl: String? = null
+        val mediaCandidates = mutableListOf<MediaCandidate>()
 
         var eventType = parser.eventType
         while (eventType != XmlPullParser.END_DOCUMENT) {
@@ -113,8 +112,7 @@ object FeedParser {
                             pubDateStr = ""
                             description = ""
                             contentEncoded = ""
-                            mediaUrl = null
-                            enclosureUrl = null
+                            mediaCandidates.clear()
                         }
                         "title" -> {
                             val text = readText(parser)
@@ -133,27 +131,35 @@ object FeedParser {
                         "pubdate", "date" -> if (insideItem) pubDateStr = readText(parser)
                         "encoded" -> if (insideItem) contentEncoded = readText(parser)
                         "content" -> {
-                            if (insideItem && mediaUrl == null) {
+                            if (insideItem) {
                                 val url = parser.getAttributeValue(null, "url")
                                 val medium = parser.getAttributeValue(null, "medium")
                                 val type = parser.getAttributeValue(null, "type")
+                                val width = parser.getAttributeValue(null, "width")?.toIntOrNull() ?: 0
+                                val height = parser.getAttributeValue(null, "height")?.toIntOrNull() ?: 0
+                                val fileSize = parser.getAttributeValue(null, "fileSize")?.toLongOrNull() ?: 0L
                                 if (!url.isNullOrBlank() && (medium == "image" || type?.startsWith("image/") == true || isImageUrl(url))) {
-                                    mediaUrl = url
+                                    mediaCandidates.add(MediaCandidate(url, width, height, fileSize, isThumbnail = false))
                                 }
                             }
                         }
                         "thumbnail" -> {
-                            if (insideItem && mediaUrl == null) {
+                            if (insideItem) {
                                 val url = parser.getAttributeValue(null, "url")
-                                if (!url.isNullOrBlank()) mediaUrl = url
+                                val width = parser.getAttributeValue(null, "width")?.toIntOrNull() ?: 0
+                                val height = parser.getAttributeValue(null, "height")?.toIntOrNull() ?: 0
+                                if (!url.isNullOrBlank()) {
+                                    mediaCandidates.add(MediaCandidate(url, width, height, 0L, isThumbnail = true))
+                                }
                             }
                         }
                         "enclosure" -> {
-                            if (insideItem && enclosureUrl == null) {
+                            if (insideItem) {
                                 val url = parser.getAttributeValue(null, "url")
                                 val type = parser.getAttributeValue(null, "type")
+                                val length = parser.getAttributeValue(null, "length")?.toLongOrNull() ?: 0L
                                 if (!url.isNullOrBlank() && (type?.startsWith("image/") == true || isImageUrl(url))) {
-                                    enclosureUrl = url
+                                    mediaCandidates.add(MediaCandidate(url, 0, 0, length, isThumbnail = false))
                                 }
                             }
                         }
@@ -165,7 +171,8 @@ object FeedParser {
                         val fullHtml = if (contentEncoded.isNotBlank()) contentEncoded else description
                         val (excerpt, imageUrlFromHtml, isExcerptOnly) = processContent(fullHtml, description)
 
-                        val finalImageUrl = mediaUrl ?: enclosureUrl ?: imageUrlFromHtml
+                        val bestMedia = ImageResolver.selectBestMediaCandidate(mediaCandidates)
+                        val finalImageUrl = bestMedia ?: imageUrlFromHtml
                         val finalGuid = guid.ifBlank { link.ifBlank { "${title}_$publishedTime" } }
 
                         items.add(
@@ -215,8 +222,7 @@ object FeedParser {
         var publishedStr = ""
         var summary = ""
         var content = ""
-        var mediaUrl: String? = null
-        var enclosureUrl: String? = null
+        val mediaCandidates = mutableListOf<MediaCandidate>()
 
         var eventType = parser.eventType
         while (eventType != XmlPullParser.END_DOCUMENT) {
@@ -235,8 +241,7 @@ object FeedParser {
                             publishedStr = ""
                             summary = ""
                             content = ""
-                            mediaUrl = null
-                            enclosureUrl = null
+                            mediaCandidates.clear()
                         }
                         "title" -> {
                             val text = readText(parser)
@@ -252,26 +257,36 @@ object FeedParser {
                             val url = parser.getAttributeValue(null, "url")
                             val medium = parser.getAttributeValue(null, "medium")
                             val type = parser.getAttributeValue(null, "type")
+                            val width = parser.getAttributeValue(null, "width")?.toIntOrNull() ?: 0
+                            val height = parser.getAttributeValue(null, "height")?.toIntOrNull() ?: 0
+                            val fileSize = parser.getAttributeValue(null, "fileSize")?.toLongOrNull() ?: 0L
                             if (insideEntry && !url.isNullOrBlank() && (medium == "image" || type?.startsWith("image/") == true || isImageUrl(url))) {
-                                mediaUrl = url
+                                mediaCandidates.add(MediaCandidate(url, width, height, fileSize, isThumbnail = false))
                             } else if (insideEntry) {
                                 content = readText(parser)
                             }
                         }
                         "thumbnail" -> {
-                            if (insideEntry && mediaUrl == null) {
+                            if (insideEntry) {
                                 val url = parser.getAttributeValue(null, "url")
-                                if (!url.isNullOrBlank()) mediaUrl = url
+                                val width = parser.getAttributeValue(null, "width")?.toIntOrNull() ?: 0
+                                val height = parser.getAttributeValue(null, "height")?.toIntOrNull() ?: 0
+                                if (!url.isNullOrBlank()) {
+                                    mediaCandidates.add(MediaCandidate(url, width, height, 0L, isThumbnail = true))
+                                }
                             }
                         }
                         "link" -> {
                             val rel = parser.getAttributeValue(null, "rel")
                             val href = parser.getAttributeValue(null, "href")
                             val type = parser.getAttributeValue(null, "type")
+                            val length = parser.getAttributeValue(null, "length")?.toLongOrNull() ?: 0L
 
                             if (insideEntry) {
-                                if (rel == "enclosure" && type?.startsWith("image/") == true) {
-                                    enclosureUrl = href
+                                if (rel == "enclosure" && (type?.startsWith("image/") == true || (!href.isNullOrBlank() && isImageUrl(href)))) {
+                                    if (!href.isNullOrBlank()) {
+                                        mediaCandidates.add(MediaCandidate(href, 0, 0, length, isThumbnail = false))
+                                    }
                                 } else if (rel == "alternate" || rel == null) {
                                     if (!href.isNullOrBlank()) link = href
                                 }
@@ -290,7 +305,8 @@ object FeedParser {
                         val fullHtml = if (content.isNotBlank()) content else summary
                         val (excerpt, imageUrlFromHtml, isExcerptOnly) = processContent(fullHtml, summary)
 
-                        val finalImageUrl = mediaUrl ?: enclosureUrl ?: imageUrlFromHtml
+                        val bestMedia = ImageResolver.selectBestMediaCandidate(mediaCandidates)
+                        val finalImageUrl = bestMedia ?: imageUrlFromHtml
                         val finalGuid = id.ifBlank { link.ifBlank { "${title}_$publishedTime" } }
 
                         items.add(
@@ -344,9 +360,8 @@ object FeedParser {
 
     private fun processContent(fullHtml: String, fallbackText: String): Triple<String, String?, Boolean> {
         val doc = Jsoup.parse(fullHtml.ifBlank { fallbackText })
-        val firstImg = doc.select("img[src]").firstOrNull()?.attr("abs:src")?.ifBlank {
-            doc.select("img[src]").firstOrNull()?.attr("src")
-        }
+        val highResImg = ImageResolver.extractBestImageFromHtml(doc)
+            ?: if (fallbackText.isNotBlank()) ImageResolver.extractBestImageFromHtml(Jsoup.parse(fallbackText)) else null
 
         val plainText = doc.text().trim()
         val wordCount = plainText.split(Regex("\\s+")).filter { it.isNotBlank() }.size
@@ -362,7 +377,7 @@ object FeedParser {
             plainText
         }
 
-        return Triple(excerpt, firstImg, isExcerptOnly)
+        return Triple(excerpt, highResImg, isExcerptOnly)
     }
 
     fun parseDate(dateStr: String): Long {

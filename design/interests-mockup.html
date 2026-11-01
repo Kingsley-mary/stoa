@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pick your interests – Stoa mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<style>
+/* MOTION TOKENS
+   interest chips rise in 25ms apart | selecting a chip pops it (.35s spring) with a haptic tick
+   step change: the old step slides out 24px and fades (.2s), the new one slides in (.4s ease-out) | rows rise 40ms apart
+   Add / Added pill pops .35s spring | press .18s spring | reduced motion: all off */
+:root{--bg:#EEEAE1;--ink:#141413;--mute:#6B665C;--line:rgba(20,20,19,.16);--card:#D6CFBF;--ease:cubic-bezier(.2,.8,.2,1);--spring:cubic-bezier(.34,1.56,.64,1)}
+@media (prefers-color-scheme:dark){:root{--bg:#10100F;--ink:#F1EDE4;--mute:#9C978B;--line:rgba(241,237,228,.18);--card:#242320}}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:"Archivo","Helvetica Neue",Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;transition:transform .18s var(--spring),background-color .2s,color .2s,opacity .2s}
+button:not(:disabled):active{transform:scale(.95)}
+.app{max-width:430px;min-height:100vh;margin:0 auto;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;min-height:57px;padding:14px 20px;padding-top:calc(14px + env(safe-area-inset-top))}
+.logo{font-weight:800;font-stretch:125%;font-size:16px;letter-spacing:.01em}
+.skip{font-size:14px;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.backb{width:28px;height:28px;display:grid;place-items:center}
+.back{display:block;width:12px;height:12px;margin-left:6px;border-left:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);transform:rotate(45deg)}
+.steps{display:flex;gap:6px;padding:0 20px}.steps i{flex:1;height:2px;background:var(--line);transition:background .3s}.steps i.on{background:var(--ink)}
+main{flex:1;overflow:hidden}
+.step{padding:30px 0 24px}
+h1{font-size:40px;line-height:.96;text-transform:uppercase;font-weight:800;font-stretch:112%;letter-spacing:-.02em;padding:0 20px}
+.lead{padding:14px 20px 0;font-size:15px;line-height:1.4;color:var(--mute);max-width:34ch}
+.wall{display:flex;flex-wrap:wrap;gap:10px;padding:28px 20px 12px}
+.int{border:1px solid var(--ink);border-radius:999px;padding:13px 22px;font-size:17px;font-weight:500}
+.int.on{background:var(--ink);color:var(--bg)}
+.int.pop{animation:chipPop .35s var(--spring)}
+@keyframes chipPop{0%{transform:scale(.92)}60%{transform:scale(1.07)}100%{transform:scale(1)}}
+.sec{padding:28px 20px 10px;font-size:13px;color:var(--mute)}
+.s{display:flex;align-items:center;gap:16px;padding:14px 20px;border-top:1px solid var(--line)}
+.mono{flex:none;width:48px;height:48px;border-radius:14px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-weight:800;font-stretch:125%;font-size:15px}
+.info{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}.info b{font-size:17px;font-weight:700;letter-spacing:-.01em}.info span{font-size:13px;color:var(--mute)}
+.pill{flex:none;border:1px solid var(--ink);border-radius:999px;padding:10px 20px;font-size:14px;font-weight:500}
+.pill.solid{background:var(--ink);color:var(--bg)}.pill.solid::before{content:"✓";margin-right:6px}
+.pill.just{animation:chipPop .35s var(--spring)}
+.alt{display:block;padding:26px 20px 0;font-size:14px;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+footer{position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:14px 20px calc(14px + env(safe-area-inset-bottom))}
+#go{display:block;width:100%;border-radius:999px;padding:17px;font-size:15px;font-weight:500;background:var(--ink);color:var(--bg)}
+#go:disabled{background:none;border:1px solid var(--line);color:var(--mute)}
+.in{animation:rise .35s var(--ease) backwards;animation-delay:calc(var(--i,0)*40ms)}
+.in-r{animation:inR .4s var(--ease) backwards}.in-l{animation:inL .4s var(--ease) backwards}.out{animation:outX .2s var(--ease) forwards}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+@keyframes inR{from{opacity:0;transform:translateX(24px)}}@keyframes inL{from{opacity:0;transform:translateX(-24px)}}@keyframes outX{to{opacity:0;transform:translateX(-24px)}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header id="top"></header>
+  <div class="steps"><i class="on"></i><i id="seg2"></i></div>
+  <main>
+    <section class="step" id="s1">
+      <h1>What do you read?</h1>
+      <p class="lead">Pick a few topics. Stoa will suggest sources to match.</p>
+      <div class="wall" id="wall"></div>
+    </section>
+    <section class="step" id="s2" hidden>
+      <h1>Start with these</h1>
+      <p class="lead" id="lead2"></p>
+      <div id="list"></div>
+      <a class="alt" href="#">Paste a site address instead</a>
+    </section>
+  </main>
+  <footer><button id="go" disabled>Pick at least one</button></footer>
+</div>
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const tick=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
+const INTERESTS=["Design","Architecture","Typography","Illustration","Photography","Fashion","Interiors","Art","Branding","Tech","AI","Gadgets","Games","Film","Music","Science","Culture","Business"];
+// Each source carries topic tags. The real catalog needs several verified feeds per topic.
+const CAT=[
+ ["Creative Boom","Illustration, design and photography",["Design","Illustration","Photography","Art"]],
+ ["Creative Review","Branding, advertising and visual culture",["Design","Branding","Typography"]],
+ ["WALLPAPER*","Design, interiors, fashion and travel",["Interiors","Design","Fashion","Architecture"]],
+ ["Dezeen","Architecture and design news",["Architecture","Interiors","Design"]],
+ ["It’s Nice That","Art, graphics and creative work",["Design","Art","Illustration","Photography"]],
+ ["Designboom","Design, art and architecture",["Design","Architecture","Art"]],
+ ["Eye on Design","Design criticism and typography",["Design","Typography","Branding"]],
+ ["Colossal","Art, illustration and photography",["Art","Illustration","Photography"]],
+ ["ArchDaily","Architecture projects and news",["Architecture","Interiors"]],
+ ["Hypebeast","Fashion, streetwear and culture",["Fashion","Culture","Music"]],
+ ["WIRED","Technology, science and culture",["Tech","AI","Science","Culture"]],
+ ["The Verge","Gadgets, apps and the internet",["Tech","Gadgets","AI","Games"]],
+ ["Ars Technica","In-depth technology reporting",["Tech","Science","Gadgets"]],
+ ["Fast Company","Business, design and innovation",["Business","Tech","Design","Branding"]],
+ ["Polygon","Games and film",["Games","Film"]],
+ ["Pitchfork","Music reviews and news",["Music","Culture"]],
+ ["Little White Lies","Film and culture",["Film","Culture"]]
+].map(([n,d,t])=>({n,d,t}));
+const ini=n=>{if(n.endsWith("*"))return n[0]+"*";const w=n.replace(/[’']/g,"").split(/\s+/).filter(x=>!["on","of"].includes(x.toLowerCase()));return w.length>1?(w[0][0]+w[1][0]).toUpperCase():n.slice(0,2).toUpperCase()};
+let step=1, picked=new Set(), added=new Set(), sel=[], more=[];
+
+$("#wall").innerHTML=INTERESTS.map((t,i)=>`<button class="int in" style="--i:${i*.625}" data-t="${t}">${t}</button>`).join("");
+$("#wall").addEventListener("click",e=>{
+  const b=e.target.closest(".int"); if(!b) return; const t=b.dataset.t;
+  picked.has(t)?picked.delete(t):picked.add(t); b.classList.toggle("on",picked.has(t));
+  b.classList.remove("pop","in"); void b.offsetWidth; if(picked.has(t)){b.classList.add("pop");tick()} sync();
+});
+
+// Suggestions: pre-add the best source for every picked topic that isn't already covered. Cap at 8.
+function suggest(){
+  const score=c=>c.t.filter(t=>picked.has(t)).length;
+  const pool=CAT.filter(c=>score(c)>0).sort((a,b)=>score(b)-score(a));
+  const pre=[];
+  [...picked].forEach(i=>{if(pre.some(c=>c.t.includes(i)))return;const c=pool.find(x=>x.t.includes(i)&&!pre.includes(x));if(c)pre.push(c)});
+  sel=pre.sort((a,b)=>score(b)-score(a)).slice(0,8); added=new Set(sel.map(c=>c.n));
+  more=pool.filter(c=>!sel.includes(c)).slice(0,6);
+}
+const why=c=>{const m=c.t.filter(t=>picked.has(t));return "Because you picked "+m.slice(0,2).join(", ")+(m.length>2?` and ${m.length-2} more`:"")};
+const row=c=>`<div class="s"><div class="mono">${ini(c.n)}</div><div class="info"><b>${c.n}</b><span>${why(c)}</span></div><button class="pill${added.has(c.n)?" solid":""}" data-n="${c.n}">${added.has(c.n)?"Added":"Add"}</button></div>`;
+function renderList(){
+  $("#list").innerHTML=`<p class="sec">Suggested for you</p>`+sel.map(row).join("")+(more.length?`<p class="sec">More you might like</p>`+more.map(row).join(""):"");
+  $$("#list .s,#list .sec").forEach((e,i)=>{e.style.setProperty("--i",Math.min(i,10));e.classList.add("in")});
+}
+$("#list").addEventListener("click",e=>{
+  const b=e.target.closest(".pill"); if(!b) return; const n=b.dataset.n;
+  added.has(n)?added.delete(n):added.add(n); b.classList.toggle("solid",added.has(n)); b.textContent=added.has(n)?"Added":"Add";
+  b.classList.remove("just"); void b.offsetWidth; if(added.has(n)){b.classList.add("just");tick()} sync();
+});
+
+function head(){
+  $("#top").innerHTML=step===1?'<span class="logo">Stoa</span><a class="skip" href="#">Skip</a>':'<button class="backb" id="bk" aria-label="Back to topics"><span class="back"></span></button><a class="skip" href="#">Skip</a>';
+  $("#seg2").classList.toggle("on",step===2);
+  const bk=$("#bk"); if(bk) bk.onclick=()=>go(1);
+}
+function sync(){
+  const g=$("#go");
+  if(step===1){g.disabled=!picked.size;g.textContent=picked.size?`Continue with ${picked.size} ${picked.size===1?"topic":"topics"}`:"Pick at least one"}
+  else{g.disabled=!added.size;g.textContent=added.size?`Continue with ${added.size} ${added.size===1?"source":"sources"}`:"Pick at least one source"}
+}
+function go(to){
+  const from=$("#s"+step), next=$("#s"+to), back=to<step;
+  if(to===2){suggest();renderList();$("#lead2").textContent=`Matched to ${[...picked].slice(0,3).join(", ")}${picked.size>3?` and ${picked.size-3} more`:""}. Tap to add or remove.`}
+  from.classList.add("out");
+  setTimeout(()=>{from.hidden=true;from.classList.remove("out");step=to;head();next.hidden=false;next.classList.remove("in-r","in-l");void next.offsetWidth;next.classList.add(back?"in-l":"in-r");sync();window.scrollTo(0,0)},200);
+}
+$("#go").onclick=()=>{if(step===1&&picked.size)go(2)};
+head(); sync();
+</script>
+</body>
+</html>

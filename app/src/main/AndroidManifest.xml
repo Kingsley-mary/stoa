@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".SignalApplication"
@@ -12,6 +13,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Signal">
         <activity
             android:name=".MainActivity"
@@ -31,6 +33,150 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.openwith.OpenWithActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Signal"
+            android:windowSoftInputMode="adjustResize">
+
+            <!-- Schemes feed: and feeds: -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="feed" />
+                <data android:scheme="feeds" />
+            </intent-filter>
+
+            <!-- RSS / Atom XML MIME types -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:mimeType="application/rss+xml" />
+                <data android:mimeType="application/atom+xml" />
+            </intent-filter>
+
+            <!-- Share > Stoa (plain text URL share) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <!-- BEGIN GENERATED CATALOG DOMAIN FILTERS -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="9to5mac.com" />
+                <data android:host="*.9to5mac.com" />
+                <data android:host="apnews.com" />
+                <data android:host="*.apnews.com" />
+                <data android:host="archdaily.com" />
+                <data android:host="*.archdaily.com" />
+                <data android:host="arstechnica.com" />
+                <data android:host="*.arstechnica.com" />
+                <data android:host="artforum.com" />
+                <data android:host="*.artforum.com" />
+                <data android:host="bpando.org" />
+                <data android:host="*.bpando.org" />
+                <data android:host="businessinsider.com" />
+                <data android:host="*.businessinsider.com" />
+                <data android:host="consequence.net" />
+                <data android:host="*.consequence.net" />
+                <data android:host="creativeboom.com" />
+                <data android:host="*.creativeboom.com" />
+                <data android:host="designboom.com" />
+                <data android:host="*.designboom.com" />
+                <data android:host="dezeen.com" />
+                <data android:host="*.dezeen.com" />
+                <data android:host="engadget.com" />
+                <data android:host="*.engadget.com" />
+                <data android:host="eurogamer.net" />
+                <data android:host="*.eurogamer.net" />
+                <data android:host="fastcompany.com" />
+                <data android:host="*.fastcompany.com" />
+                <data android:host="forbes.com" />
+                <data android:host="*.forbes.com" />
+                <data android:host="fortune.com" />
+                <data android:host="*.fortune.com" />
+                <data android:host="gq.com" />
+                <data android:host="*.gq.com" />
+                <data android:host="highsnobiety.com" />
+                <data android:host="*.highsnobiety.com" />
+                <data android:host="hypebeast.com" />
+                <data android:host="*.hypebeast.com" />
+                <data android:host="hyperallergic.com" />
+                <data android:host="*.hyperallergic.com" />
+                <data android:host="identitydesigned.com" />
+                <data android:host="*.identitydesigned.com" />
+                <data android:host="ign.com" />
+                <data android:host="*.ign.com" />
+                <data android:host="ilovetypography.com" />
+                <data android:host="*.ilovetypography.com" />
+                <data android:host="indiewire.com" />
+                <data android:host="*.indiewire.com" />
+                <data android:host="juxtapoz.com" />
+                <data android:host="*.juxtapoz.com" />
+                <data android:host="kotaku.com" />
+                <data android:host="*.kotaku.com" />
+                <data android:host="marketwatch.com" />
+                <data android:host="*.marketwatch.com" />
+                <data android:host="newscientist.com" />
+                <data android:host="*.newscientist.com" />
+                <data android:host="npr.org" />
+                <data android:host="*.npr.org" />
+                <data android:host="pcgamer.com" />
+                <data android:host="*.pcgamer.com" />
+                <data android:host="petapixel.com" />
+                <data android:host="*.petapixel.com" />
+                <data android:host="pitchfork.com" />
+                <data android:host="*.pitchfork.com" />
+                <data android:host="politico.com" />
+                <data android:host="*.politico.com" />
+                <data android:host="polygon.com" />
+                <data android:host="*.polygon.com" />
+                <data android:host="quantamagazine.org" />
+                <data android:host="*.quantamagazine.org" />
+                <data android:host="rockpapershotgun.com" />
+                <data android:host="*.rockpapershotgun.com" />
+                <data android:host="scientificamerican.com" />
+                <data android:host="*.scientificamerican.com" />
+                <data android:host="screenrant.com" />
+                <data android:host="*.screenrant.com" />
+                <data android:host="slashfilm.com" />
+                <data android:host="*.slashfilm.com" />
+                <data android:host="stereogum.com" />
+                <data android:host="*.stereogum.com" />
+                <data android:host="techcrunch.com" />
+                <data android:host="*.techcrunch.com" />
+                <data android:host="technologyreview.com" />
+                <data android:host="*.technologyreview.com" />
+                <data android:host="theatlantic.com" />
+                <data android:host="*.theatlantic.com" />
+                <data android:host="thehill.com" />
+                <data android:host="*.thehill.com" />
+                <data android:host="theverge.com" />
+                <data android:host="*.theverge.com" />
+                <data android:host="thisiscolossal.com" />
+                <data android:host="*.thisiscolossal.com" />
+                <data android:host="typewolf.com" />
+                <data android:host="*.typewolf.com" />
+                <data android:host="wallpaper.com" />
+                <data android:host="*.wallpaper.com" />
+                <data android:host="wired.com" />
+                <data android:host="*.wired.com" />
+                <data android:host="wsj.com" />
+                <data android:host="*.wsj.com" />
+            </intent-filter>
+            <!-- END GENERATED CATALOG DOMAIN FILTERS -->
         </activity>
 
         <provider

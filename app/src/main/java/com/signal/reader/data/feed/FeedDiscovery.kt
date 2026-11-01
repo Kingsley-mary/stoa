@@ -61,9 +61,20 @@ class FeedDiscovery(
             // Failed to fetch normalized URL directly, fall through to try common paths
         }
 
+        // Step 3: If not found on article page, try the site's homepage
+        val origin = "${uri.scheme ?: "https"}://${baseHost}"
+        if (normalizedUrl.trimEnd('/') != origin.trimEnd('/')) {
+            try {
+                val (homeBody, _) = fetcher.fetch(origin)
+                val homeHtmlResult = findFeedInHtml(homeBody, origin, baseHost)
+                if (homeHtmlResult != null) return@withContext homeHtmlResult
+            } catch (_: Exception) {
+                // Ignore homepage fetch error and continue to common paths
+            }
+        }
+
         // Step 4: If none found in HTML, try common paths: /feed, /rss, /feed.xml, /atom.xml, /rss.xml
         val commonPaths = listOf("/feed", "/rss", "/feed.xml", "/atom.xml", "/rss.xml", "/feeds.xml")
-        val origin = "${uri.scheme ?: "https"}://${baseHost}"
 
         for (path in commonPaths) {
             val candidateUrl = "$origin$path"

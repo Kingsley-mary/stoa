@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.signal.reader.data.feed.ImageResolver
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
@@ -62,7 +63,10 @@ fun HeroCard(
     modifier: Modifier = Modifier
 ) {
     val colors = SignalTheme.colors
-    val hasImage = !article.imageUrl.isNullOrBlank()
+    val effectiveImage = remember(article) {
+        ImageResolver.getEffectiveCoverImage(article.imageUrl, article.fullContent, article.excerpt)
+    }
+    val hasImage = !effectiveImage.isNullOrBlank()
 
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -129,7 +133,7 @@ fun HeroCard(
                     .background(colors.card)
             ) {
                 AsyncImage(
-                    model = article.imageUrl,
+                    model = effectiveImage,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -159,7 +163,15 @@ fun HeroCard(
                 title = article.title,
                 read = article.read,
                 animateWords = animateWords,
-                modifier = Modifier.padding(top = 18.dp, bottom = 12.dp)
+                modifier = Modifier.padding(top = 18.dp, bottom = 6.dp)
+            )
+
+            // Sub-headline line: x min read
+            Text(
+                text = TimeUtils.formatReadTime(article.fullContent, article.excerpt),
+                style = SignalTheme.typography.metaTime,
+                color = colors.mute,
+                modifier = Modifier.padding(bottom = 8.dp)
             )
         } else {
             // Flat type card: 1:1 aspect ratio square card-coloured block (.pic.flat)
@@ -199,7 +211,15 @@ fun HeroCard(
                 }
             }
 
-            Spacer(modifier = Modifier.size(12.dp))
+            Spacer(modifier = Modifier.size(8.dp))
+
+            // Sub-headline line: x min read
+            Text(
+                text = TimeUtils.formatReadTime(article.fullContent, article.excerpt),
+                style = SignalTheme.typography.metaTime,
+                color = colors.mute,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
         }
 
         // Meta line: [Unread dot] Source · Time · [Saved]
@@ -230,12 +250,6 @@ fun HeroCard(
 
             Text(
                 text = TimeUtils.formatRelativeTime(article.publishedTime),
-                style = SignalTheme.typography.metaTime,
-                color = colors.mute
-            )
-
-            Text(
-                text = TimeUtils.formatReadTime(article.fullContent, article.excerpt),
                 style = SignalTheme.typography.metaTime,
                 color = colors.mute
             )

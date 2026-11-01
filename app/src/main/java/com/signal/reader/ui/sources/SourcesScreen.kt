@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -52,7 +53,7 @@ fun SourcesScreen(
     modifier: Modifier = Modifier
 ) {
     val colors = SignalTheme.colors
-    val sources by repository.getAllSourcesFlow().collectAsState(initial = emptyList())
+    val sources by repository.getFollowedSourcesFlow().collectAsState(initial = emptyList())
     val unreadCounts by repository.getUnreadCountsFlow().collectAsState(initial = emptyList())
 
     val unreadMap = unreadCounts.associate { it.sourceId to it.unreadCount }
@@ -65,6 +66,7 @@ fun SourcesScreen(
         modifier = modifier
             .fillMaxSize()
             .background(colors.bg)
+            .statusBarsPadding()
     ) {
         if (orderedSources.isEmpty()) {
             // Empty state (.empty)

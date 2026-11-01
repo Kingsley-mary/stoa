@@ -17,7 +17,10 @@ data class SignalSettings(
     val refreshIntervalMinutes: Long = 60,
     val wifiOnly: Boolean = false,
     val isFirstLaunchCompleted: Boolean = false,
-    val recentSearches: List<String> = emptyList()
+    val recentSearches: List<String> = emptyList(),
+    val newSitesBehavior: String = "follow_and_open", // "follow_and_open", "ask_first", "just_open"
+    val openByDefaultCardDismissed: Boolean = false,
+    val userInterests: Set<String> = emptySet()
 )
 
 class SettingsManager(context: Context) {
@@ -42,8 +45,27 @@ class SettingsManager(context: Context) {
             refreshIntervalMinutes = prefs.getLong(KEY_REFRESH_INTERVAL, 60),
             wifiOnly = prefs.getBoolean(KEY_WIFI_ONLY, false),
             isFirstLaunchCompleted = prefs.getBoolean(KEY_FIRST_LAUNCH, false),
-            recentSearches = recents
+            recentSearches = recents,
+            newSitesBehavior = prefs.getString(KEY_NEW_SITES_BEHAVIOR, "follow_and_open") ?: "follow_and_open",
+            openByDefaultCardDismissed = prefs.getBoolean(KEY_OPEN_BY_DEFAULT_DISMISSED, false),
+            userInterests = prefs.getStringSet(KEY_USER_INTERESTS, emptySet()) ?: emptySet()
         )
+    }
+
+    fun updateNewSitesBehavior(behavior: String) {
+        val safe = if (behavior in listOf("follow_and_open", "ask_first", "just_open")) behavior else "follow_and_open"
+        prefs.edit().putString(KEY_NEW_SITES_BEHAVIOR, safe).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(newSitesBehavior = safe)
+    }
+
+    fun setOpenByDefaultCardDismissed(dismissed: Boolean = true) {
+        prefs.edit().putBoolean(KEY_OPEN_BY_DEFAULT_DISMISSED, dismissed).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(openByDefaultCardDismissed = dismissed)
+    }
+
+    fun updateUserInterests(interests: Set<String>) {
+        prefs.edit().putStringSet(KEY_USER_INTERESTS, interests).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(userInterests = interests)
     }
 
     fun updateTheme(theme: String) {
@@ -129,5 +151,8 @@ class SettingsManager(context: Context) {
         private const val KEY_WIFI_ONLY = "wifi_only"
         private const val KEY_FIRST_LAUNCH = "first_launch_completed"
         private const val KEY_RECENT_SEARCHES = "recent_searches"
+        private const val KEY_NEW_SITES_BEHAVIOR = "new_sites_behavior"
+        private const val KEY_OPEN_BY_DEFAULT_DISMISSED = "open_by_default_dismissed"
+        private const val KEY_USER_INTERESTS = "user_interests"
     }
 }

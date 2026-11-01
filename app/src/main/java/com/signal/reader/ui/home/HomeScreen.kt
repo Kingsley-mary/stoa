@@ -1,5 +1,11 @@
 package com.signal.reader.ui.home
 
+import android.content.Intent
+import android.content.pm.verify.domain.DomainVerificationManager
+import android.content.pm.verify.domain.DomainVerificationUserState
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -14,6 +20,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -22,17 +29,21 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -48,6 +59,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.signal.reader.data.local.SettingsManager
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
@@ -79,15 +95,51 @@ fun HomeScreen(
     onSearchClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onAddSourcesClick: () -> Unit,
+    settingsManager: SettingsManager? = null,
     isCompactLayout: Boolean = false,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val colors = SignalTheme.colors
     val density = LocalDensity.current
     val haptics = rememberSignalHaptics()
     val coroutineScope = rememberCoroutineScope()
+
+    val actualSettingsManager = settingsManager ?: remember {
+        (context.applicationContext as com.signal.reader.SignalApplication).settingsManager
+    }
+
+    val homeSettings by actualSettingsManager.settingsFlow.collectAsState()
+    val isCardDismissed = homeSettings.openByDefaultCardDismissed
+    var showDomainSetupDialog by remember { mutableStateOf(false) }
+
+    val domainApprovalState = remember(context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                val dvm = context.getSystemService(DomainVerificationManager::class.java)
+                val userState = dvm?.getDomainVerificationUserState(context.packageName)
+                val hostMap = userState?.hostToStateMap
+                if (hostMap != null && hostMap.isNotEmpty()) {
+                    val total = hostMap.size
+                    val approved = hostMap.values.count {
+                        it == DomainVerificationUserState.DOMAIN_STATE_VERIFIED ||
+                        it == DomainVerificationUserState.DOMAIN_STATE_SELECTED
+                    }
+                    Triple(approved == total, approved, total)
+                } else {
+                    Triple(true, 0, 0)
+                }
+            } catch (_: Exception) {
+                Triple(true, 0, 0)
+            }
+        } else {
+            Triple(true, 0, 0)
+        }
+    }
+    val (isAllApproved, approvedCount, totalCount) = domainApprovalState
+    val shouldShowDomainCard = !isAllApproved && !isCardDismissed
 
     val sources by repository.getFollowedSourcesFlow().collectAsState(initial = emptyList())
     val allArticles by repository.getHomeStreamFlow().collectAsState(initial = emptyList())
@@ -264,6 +316,58 @@ fun HomeScreen(
                             .alpha(feedAlpha.value)
                             .offset { IntOffset(0, (feedOffsetY.value * density.density).roundToInt()) }
                     ) {
+                        // Open Links by Default Card (Feature 3)
+                        if (shouldShowDomainCard) {
+                            item(key = "open_by_default_card") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(colors.card)
+                                        .border(1.dp, colors.line, RoundedCornerShape(20.dp))
+                                        .clickable { showDomainSetupDialog = true }
+                                        .padding(18.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Open links in Stoa",
+                                                fontSize = 17.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.ink,
+                                                letterSpacing = (-0.01).sp
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "Tap to open articles from your followed sites by default ($approvedCount of $totalCount approved).",
+                                                fontSize = 13.sp,
+                                                color = colors.mute,
+                                                lineHeight = 18.sp
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(CircleShape)
+                                                .signalPressScale(0.92f) {
+                                                    coroutineScope.launch {
+                                                        actualSettingsManager.setOpenByDefaultCardDismissed(true)
+                                                    }
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(text = "✕", fontSize = 14.sp, color = colors.mute)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Hero Card
                         if (heroArticle != null) {
                             item(key = "hero_${heroArticle.id}") {
@@ -345,6 +449,65 @@ fun HomeScreen(
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
                 )
             }
+        }
+
+        if (showDomainSetupDialog) {
+            AlertDialog(
+                onDismissRequest = { showDomainSetupDialog = false },
+                containerColor = colors.bg,
+                titleContentColor = colors.ink,
+                textContentColor = colors.mute,
+                shape = RoundedCornerShape(22.dp),
+                title = {
+                    Text(
+                        text = "Open links in Stoa",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.ink
+                    )
+                },
+                text = {
+                    Text(
+                        text = "When you tap an article link in another app (like WhatsApp or email), Android can open it directly in Stoa instead of your web browser.\n\nIn Android Settings, toggle 'Open supported links' on.",
+                        fontSize = 15.sp,
+                        lineHeight = 21.sp,
+                        color = colors.mute
+                    )
+                },
+                confirmButton = {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.ink)
+                            .signalPressScale(0.96f) {
+                                showDomainSetupDialog = false
+                                try {
+                                    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        Intent(Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS, Uri.parse("package:${context.packageName}"))
+                                    } else {
+                                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                                    }
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "Open Settings", color = colors.bg, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    }
+                },
+                dismissButton = {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .signalPressScale(0.96f) { showDomainSetupDialog = false }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "Cancel", color = colors.mute, fontSize = 14.sp)
+                    }
+                }
+            )
         }
     }
 }

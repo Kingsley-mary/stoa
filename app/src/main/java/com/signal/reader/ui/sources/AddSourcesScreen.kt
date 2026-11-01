@@ -16,6 +16,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -78,7 +81,8 @@ fun AddSourcesScreen(
     repository: FeedRepository,
     onFinish: () -> Unit,
     onSkip: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenInterests: (() -> Unit)? = null
 ) {
     val colors = SignalTheme.colors
     val haptics = rememberSignalHaptics()
@@ -95,16 +99,24 @@ fun AddSourcesScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
 
+    val allCategories = remember { listOf("All") + StarterSources.ALL.map { it.group }.distinct() }
+    var selectedCategory by remember { mutableStateOf("All") }
+
     val selectedStarter = remember { mutableStateListOf<StarterSource>() }
     val customAdded = remember { mutableStateListOf<DiscoveryResult.Found>() }
     val optimisticallyFollowed = remember { mutableStateListOf<String>() }
 
-    val filteredGroups = remember(searchQuery) {
+    val filteredGroups = remember(searchQuery, selectedCategory) {
         val q = searchQuery.trim().lowercase()
-        if (q.isBlank()) {
-            StarterSources.ALL.groupBy { it.group }
-        } else {
+        val baseList = if (selectedCategory == "All") {
             StarterSources.ALL
+        } else {
+            StarterSources.ALL.filter { it.group.equals(selectedCategory, ignoreCase = true) }
+        }
+        if (q.isBlank()) {
+            baseList.groupBy { it.group }
+        } else {
+            baseList
                 .filter {
                     it.name.lowercase().contains(q) ||
                     it.group.lowercase().contains(q) ||
@@ -238,6 +250,33 @@ fun AddSourcesScreen(
                             lineHeight = 21.sp,
                             modifier = Modifier.padding(top = 14.dp)
                         )
+                        if (onOpenInterests != null) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        haptics.tick()
+                                        onOpenInterests()
+                                    }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Prefer picking by topic?",
+                                    fontSize = 14.sp,
+                                    color = colors.mute
+                                )
+                                Text(
+                                    text = "Pick interests →",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.ink,
+                                    textDecoration = TextDecoration.Underline
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -295,6 +334,44 @@ fun AddSourcesScreen(
                                         .padding(4.dp)
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // Category Filter Chips
+            item {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(allCategories) { cat ->
+                        val isSelected = cat == selectedCategory
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (isSelected) colors.ink else colors.card)
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isSelected) colors.ink else colors.line,
+                                    shape = CircleShape
+                                )
+                                .clickable {
+                                    haptics.tick()
+                                    selectedCategory = cat
+                                }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = cat,
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+                                color = if (isSelected) colors.bg else colors.ink
+                            )
                         }
                     }
                 }

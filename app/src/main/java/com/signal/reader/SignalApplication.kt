@@ -10,6 +10,7 @@ import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.local.SignalDatabase
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.data.sync.RefreshWorker
+import com.signal.reader.data.update.UpdateManager
 
 class SignalApplication : Application(), ImageLoaderFactory {
 
@@ -22,6 +23,9 @@ class SignalApplication : Application(), ImageLoaderFactory {
     lateinit var settingsManager: SettingsManager
         private set
 
+    lateinit var updateManager: UpdateManager
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -29,6 +33,7 @@ class SignalApplication : Application(), ImageLoaderFactory {
         database = SignalDatabase.getInstance(this)
         repository = FeedRepository(database)
         settingsManager = SettingsManager(this)
+        updateManager = UpdateManager(this)
 
         val settings = settingsManager.settingsFlow.value
         RefreshWorker.schedule(

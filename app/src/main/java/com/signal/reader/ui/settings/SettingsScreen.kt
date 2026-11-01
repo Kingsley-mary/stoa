@@ -2,6 +2,8 @@ package com.signal.reader.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,19 +32,29 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -50,7 +62,11 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,12 +74,15 @@ import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.opml.OpmlManager
 import com.signal.reader.data.repository.FeedRepository
 import com.signal.reader.data.sync.RefreshWorker
+import com.signal.reader.data.update.UpdateManager
+import com.signal.reader.data.update.UpdateState
 import com.signal.reader.ui.components.BackChevron
 import com.signal.reader.ui.components.StaggeredItem
 import com.signal.reader.ui.components.rememberSignalHaptics
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
 import com.signal.reader.ui.theme.signalPressScale
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,6 +92,7 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     settingsManager: SettingsManager,
     repository: FeedRepository,
+    updateManager: UpdateManager,
     onBack: () -> Unit,
     onOpenWidgetSettings: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -84,6 +104,7 @@ fun SettingsScreen(
     val settings by settingsManager.settingsFlow.collectAsState()
 
     val fontSizes = listOf(16.sp, 18.sp, 20.sp, 23.sp)
+    var showOpenLinksDialog by remember { mutableStateOf(false) }
 
     // Activity result launcher for OPML export
     val exportOpmlLauncher = rememberLauncherForActivityResult(
@@ -410,9 +431,65 @@ fun SettingsScreen(
                 }
             }
 
-            // About Section
+            // Opening Links Section
             item {
                 StaggeredItem(index = 5) {
+                    Column {
+                        SettingsSectionHeader("Opening links")
+
+                        HorizontalDivider(color = colors.line, thickness = 1.dp)
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 16.dp)
+                        ) {
+                            Text(
+                                text = "New sites",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = colors.ink
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "When tapping links from sites you don't follow",
+                                fontSize = 13.sp,
+                                color = colors.mute
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            SlidingSegmentedControl(
+                                options = listOf("Follow & open", "Ask first", "Just open"),
+                                selectedIndex = when (settings.newSitesBehavior) {
+                                    "ask_first" -> 1
+                                    "just_open" -> 2
+                                    else -> 0
+                                },
+                                onSelect = { idx ->
+                                    haptics.tick()
+                                    val behavior = when (idx) {
+                                        1 -> "ask_first"
+                                        2 -> "just_open"
+                                        else -> "follow_and_open"
+                                    }
+                                    settingsManager.updateNewSitesBehavior(behavior)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                equalWeights = true
+                            )
+                        }
+
+                        SettingsActionRow(
+                            label = "Open links from your sources in Stoa",
+                            sublabel = "Set Android to open followed links automatically",
+                            onClick = { showOpenLinksDialog = true }
+                        )
+                    }
+                }
+            }
+
+            // About Section
+            item {
+                StaggeredItem(index = 6) {
                     Column {
                         SettingsSectionHeader("About")
 
@@ -431,23 +508,195 @@ fun SettingsScreen(
                             )
                             val versionName = remember {
                                 try {
-                                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.3"
+                                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.4"
                                 } catch (_: Exception) {
-                                    "1.3"
+                                    "1.4"
                                 }
                             }
                             Text(
-                                text = versionName,
+                                text = "Stoa $versionName",
                                 fontSize = 14.sp,
                                 color = colors.mute
                             )
                         }
 
                         HorizontalDivider(color = colors.line, thickness = 1.dp)
+
+                        // In-App Update Section
+                        val updateState by updateManager.updateState.collectAsState()
+                        var showEndpointDialog by remember { mutableStateOf(false) }
+                        var endpointInput by remember { mutableStateOf(updateManager.updateManifestUrl) }
+
+                        UpdateSection(
+                            updateState = updateState,
+                            onCheck = {
+                                haptics.tick()
+                                coroutineScope.launch {
+                                    updateManager.checkForUpdates()
+                                }
+                            },
+                            onDownloadAndInstall = { available ->
+                                haptics.pop()
+                                coroutineScope.launch {
+                                    updateManager.downloadAndInstall(available)
+                                }
+                            },
+                            onInstallApk = { apkFile ->
+                                haptics.pop()
+                                updateManager.installApk(context, apkFile)
+                            },
+                            onReset = {
+                                updateManager.resetState()
+                            },
+                            onConfigure = {
+                                endpointInput = updateManager.updateManifestUrl
+                                showEndpointDialog = true
+                            }
+                        )
+
+                        HorizontalDivider(color = colors.line, thickness = 1.dp)
                         Spacer(modifier = Modifier.height(48.dp))
+
+                        if (showEndpointDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showEndpointDialog = false },
+                                containerColor = colors.bg,
+                                titleContentColor = colors.ink,
+                                textContentColor = colors.mute,
+                                shape = RoundedCornerShape(22.dp),
+                                title = {
+                                    Text(
+                                        text = "Update Server URL",
+                                        style = SignalTheme.typography.screenTitle,
+                                        fontSize = 20.sp,
+                                        color = colors.ink
+                                    )
+                                },
+                                text = {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Text(
+                                            text = "Enter a GitHub Releases API or version.json URL to check for updates:",
+                                            fontSize = 14.sp,
+                                            color = colors.mute,
+                                            lineHeight = 20.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(14.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .border(1.dp, colors.line, RoundedCornerShape(12.dp))
+                                                .background(colors.card)
+                                                .padding(12.dp)
+                                        ) {
+                                            BasicTextField(
+                                                value = endpointInput,
+                                                onValueChange = { endpointInput = it },
+                                                textStyle = TextStyle(
+                                                    color = colors.ink,
+                                                    fontSize = 13.sp,
+                                                    fontFamily = SignalTheme.typography.wordmark.fontFamily
+                                                ),
+                                                cursorBrush = SolidColor(colors.ink),
+                                                singleLine = false,
+                                                maxLines = 4,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    }
+                                },
+                                confirmButton = {
+                                    Text(
+                                        text = "Save",
+                                        color = colors.ink,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                if (endpointInput.isNotBlank()) {
+                                                    updateManager.updateManifestUrl = endpointInput.trim()
+                                                }
+                                                showEndpointDialog = false
+                                            }
+                                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    )
+                                },
+                                dismissButton = {
+                                    Text(
+                                        text = "Cancel",
+                                        color = colors.mute,
+                                        fontSize = 15.sp,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable { showEndpointDialog = false }
+                                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
             }
+        }
+
+        if (showOpenLinksDialog) {
+            AlertDialog(
+                onDismissRequest = { showOpenLinksDialog = false },
+                containerColor = colors.bg,
+                titleContentColor = colors.ink,
+                textContentColor = colors.mute,
+                shape = RoundedCornerShape(22.dp),
+                title = {
+                    Text(
+                        text = "Open links in Stoa",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.ink
+                    )
+                },
+                text = {
+                    Text(
+                        text = "When you tap an article link in another app (like WhatsApp or email), Android can open it directly in Stoa instead of your web browser.\n\nIn Android Settings, toggle 'Open supported links' on.",
+                        fontSize = 15.sp,
+                        lineHeight = 21.sp,
+                        color = colors.mute
+                    )
+                },
+                confirmButton = {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.ink)
+                            .signalPressScale(0.96f) {
+                                showOpenLinksDialog = false
+                                try {
+                                    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        Intent(Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS, Uri.parse("package:${context.packageName}"))
+                                    } else {
+                                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                                    }
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "Open Settings", color = colors.bg, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    }
+                },
+                dismissButton = {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .signalPressScale(0.96f) { showOpenLinksDialog = false }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "Cancel", color = colors.mute, fontSize = 14.sp)
+                    }
+                }
+            )
         }
     }
 }
@@ -567,7 +816,9 @@ private fun SettingsActionRow(
 private fun SlidingSegmentedControl(
     options: List<String>,
     selectedIndex: Int,
-    onSelect: (Int) -> Unit
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    equalWeights: Boolean = false
 ) {
     val colors = SignalTheme.colors
     val density = LocalDensity.current
@@ -587,7 +838,7 @@ private fun SlidingSegmentedControl(
     )
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .height(IntrinsicSize.Min)
             .clip(CircleShape)
             .background(colors.bg)
@@ -605,13 +856,18 @@ private fun SlidingSegmentedControl(
         }
 
         Row(
-            modifier = Modifier.fillMaxHeight(),
+            modifier = if (equalWeights) Modifier.fillMaxWidth().fillMaxHeight() else Modifier.fillMaxHeight(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             options.forEachIndexed { index, option ->
                 val isSelected = index == selectedIndex
+                val itemModifier = if (equalWeights) {
+                    Modifier.weight(1f)
+                } else {
+                    Modifier
+                }
                 Box(
-                    modifier = Modifier
+                    modifier = itemModifier
                         .onGloballyPositioned { coords ->
                             val x = coords.positionInParent().x
                             val w = coords.size.width.toFloat()
@@ -621,20 +877,21 @@ private fun SlidingSegmentedControl(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { onSelect(index) }
-                        .padding(horizontal = 15.dp, vertical = 9.dp),
+                        .padding(horizontal = if (equalWeights) 6.dp else 15.dp, vertical = 9.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = option,
                         color = if (isSelected) colors.bg else colors.ink,
-                        fontSize = 13.sp,
-                        fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
+                        fontSize = if (equalWeights) 12.5.sp else 13.sp,
+                        fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+                        maxLines = 1
                     )
                 }
             }
         }
 
-        // Crisp 1px container outline overlay
+        // Crisp 1px container overlay border
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -702,6 +959,221 @@ private fun SignalSwitch(
                 .size(20.dp)
                 .clip(CircleShape)
                 .background(if (checked) colors.bg else colors.ink)
+        )
+    }
+}
+
+@Composable
+private fun UpdateSection(
+    updateState: UpdateState,
+    onCheck: () -> Unit,
+    onDownloadAndInstall: (UpdateState.Available) -> Unit,
+    onInstallApk: (File) -> Unit,
+    onReset: () -> Unit,
+    onConfigure: () -> Unit
+) {
+    val colors = SignalTheme.colors
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Updates",
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 17.sp,
+                    color = colors.ink
+                )
+                Text(
+                    text = when (updateState) {
+                        is UpdateState.Idle -> "Check for new versions directly"
+                        is UpdateState.Checking -> "Checking for updates…"
+                        is UpdateState.UpToDate -> "You're on the latest version"
+                        is UpdateState.Available -> "Version ${updateState.versionName} is ready to install"
+                        is UpdateState.Downloading -> "Downloading update…"
+                        is UpdateState.ReadyToInstall -> "Download complete. Ready to install."
+                        is UpdateState.Error -> updateState.message
+                    },
+                    fontSize = 13.sp,
+                    color = when (updateState) {
+                        is UpdateState.Error -> colors.accent
+                        is UpdateState.Available -> colors.ink
+                        else -> colors.mute
+                    },
+                    lineHeight = 18.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            when (updateState) {
+                is UpdateState.Idle, is UpdateState.UpToDate, is UpdateState.Error -> {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .border(1.dp, colors.ink, CircleShape)
+                            .signalPressScale(0.96f) { onCheck() }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (updateState is UpdateState.Error) "Retry" else "Check now",
+                            color = colors.ink,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                is UpdateState.Checking -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = colors.ink,
+                        strokeWidth = 2.dp
+                    )
+                }
+                is UpdateState.Available -> {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.ink)
+                            .signalPressScale(0.96f) { onDownloadAndInstall(updateState) }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Update",
+                            color = colors.bg,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                is UpdateState.Downloading -> {
+                    Text(
+                        text = "${updateState.progressPercent}%",
+                        color = colors.ink,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                is UpdateState.ReadyToInstall -> {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.ink)
+                            .signalPressScale(0.96f) { onInstallApk(updateState.apkFile) }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Install",
+                            color = colors.bg,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        // Expanded card for Available or Downloading state
+        if (updateState is UpdateState.Available) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(colors.card)
+                    .border(1.dp, colors.line, RoundedCornerShape(16.dp))
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "STOA ${updateState.versionName.uppercase()}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.ink,
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = "New release",
+                            fontSize = 11.sp,
+                            color = colors.accent,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (updateState.changelog.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = updateState.changelog,
+                            fontSize = 13.sp,
+                            color = colors.mute,
+                            lineHeight = 18.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(CircleShape)
+                            .background(colors.ink)
+                            .signalPressScale(0.96f) { onDownloadAndInstall(updateState) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Download & Install Update",
+                            color = colors.bg,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        } else if (updateState is UpdateState.Downloading) {
+            Spacer(modifier = Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { updateState.progressPercent / 100f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(CircleShape),
+                color = colors.ink,
+                trackColor = colors.line
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            val mbDownloaded = String.format(java.util.Locale.US, "%.1f", updateState.downloadedBytes / (1024f * 1024f))
+            val mbTotal = String.format(java.util.Locale.US, "%.1f", updateState.totalBytes / (1024f * 1024f))
+            Text(
+                text = "$mbDownloaded MB / $mbTotal MB",
+                fontSize = 12.sp,
+                color = colors.mute
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Configure update server",
+            fontSize = 12.sp,
+            color = colors.mute,
+            textDecoration = TextDecoration.Underline,
+            modifier = Modifier
+                .clickable { onConfigure() }
+                .padding(vertical = 4.dp)
         )
     }
 }

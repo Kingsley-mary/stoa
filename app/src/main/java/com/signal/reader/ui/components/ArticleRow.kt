@@ -42,10 +42,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.signal.reader.data.feed.ImageResolver
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.ui.theme.SignalMotion
 import com.signal.reader.ui.theme.SignalTheme
@@ -181,6 +183,10 @@ fun ArticleRow(
             Column(modifier = Modifier.fillMaxWidth()) {
                 HorizontalDivider(color = colors.line, thickness = 1.dp)
 
+                val effectiveImage = remember(article) {
+                    ImageResolver.getEffectiveCoverImage(article.imageUrl, article.fullContent, article.excerpt)
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -196,7 +202,7 @@ fun ArticleRow(
                         // Meta line: [Unread dot] Source · Time · [Saved]
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             AnimatedVisibility(
                                 visible = !article.read,
@@ -213,7 +219,16 @@ fun ArticleRow(
                             Text(
                                 text = article.sourceName,
                                 style = SignalTheme.typography.metaSource,
-                                color = colors.ink
+                                color = colors.ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+
+                            Text(
+                                text = "·",
+                                style = SignalTheme.typography.metaTime,
+                                color = colors.mute
                             )
 
                             Text(
@@ -222,13 +237,12 @@ fun ArticleRow(
                                 color = colors.mute
                             )
 
-                            Text(
-                                text = TimeUtils.formatReadTime(article.fullContent, article.excerpt),
-                                style = SignalTheme.typography.metaTime,
-                                color = colors.mute
-                            )
-
                             if (article.saved) {
+                                Text(
+                                    text = "·",
+                                    style = SignalTheme.typography.metaTime,
+                                    color = colors.mute
+                                )
                                 Text(
                                     text = "Saved",
                                     style = SignalTheme.typography.metaSource,
@@ -243,10 +257,17 @@ fun ArticleRow(
                             style = SignalTheme.typography.rowHeadline,
                             color = colors.ink
                         )
+
+                        // Sub-headline line: x min read
+                        Text(
+                            text = TimeUtils.formatReadTime(article.fullContent, article.excerpt),
+                            style = SignalTheme.typography.metaTime,
+                            color = colors.mute
+                        )
                     }
 
-                    // 88x88 Thumbnail (if article has an image)
-                    if (!article.imageUrl.isNullOrBlank()) {
+                    // 88x88 Thumbnail (if article has an image or extracted image from content)
+                    if (!effectiveImage.isNullOrBlank()) {
                         Box(
                             modifier = Modifier
                                 .size(88.dp)
@@ -261,7 +282,7 @@ fun ArticleRow(
                                 .background(colors.card)
                         ) {
                             AsyncImage(
-                                model = article.imageUrl,
+                                model = effectiveImage,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()

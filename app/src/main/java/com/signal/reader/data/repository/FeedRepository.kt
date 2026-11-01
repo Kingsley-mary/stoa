@@ -1,5 +1,6 @@
 package com.signal.reader.data.repository
 
+import com.signal.reader.data.feed.DiscoveryResult
 import com.signal.reader.data.feed.FeedDiscovery
 import com.signal.reader.data.feed.FeedFetcher
 import com.signal.reader.data.feed.ParsedArticle
@@ -49,6 +50,10 @@ class FeedRepository(
 
     suspend fun getSourceById(id: Long): SourceEntity? = withContext(Dispatchers.IO) {
         sourceDao.getSourceById(id)
+    }
+
+    suspend fun findArticleByLinkOrGuid(link: String, altLink: String = link): ArticleEntity? = withContext(Dispatchers.IO) {
+        articleDao.findArticleByLinkOrGuid(link, altLink)
     }
 
     suspend fun addSource(
@@ -120,10 +125,33 @@ class FeedRepository(
         idsToRefresh
     }
 
+    suspend fun addCatalogSourcesBatch(
+        sources: List<com.signal.reader.data.catalog.CatalogSource>
+    ): List<Long> = withContext(Dispatchers.IO) {
+        addSourcesBatch(
+            sources.map {
+                StarterSource(
+                    group = it.topics.firstOrNull() ?: "General",
+                    name = it.name,
+                    description = it.description,
+                    siteUrl = it.siteUrl,
+                    feedUrl = it.feedUrl
+                )
+            }
+        )
+    }
+
     suspend fun unfollowSource(sourceId: Long) = withContext(Dispatchers.IO) {
-        // Keep saved articles, remove unsaved articles and the source
+        // Keep saved articles, remove unsaved articles and update followed status
         articleDao.deleteUnsavedBySourceId(sourceId)
-        sourceDao.deleteById(sourceId)
+        sourceDao.setFollowed(sourceId, false)
+    }
+
+    suspend fun setFollowed(sourceId: Long, followed: Boolean) = withContext(Dispatchers.IO) {
+        sourceDao.setFollowed(sourceId, followed)
+        if (!followed) {
+            articleDao.deleteUnsavedBySourceId(sourceId)
+        }
     }
 
     suspend fun setMuted(sourceId: Long, muted: Boolean) = withContext(Dispatchers.IO) {
@@ -160,7 +188,37 @@ class FeedRepository(
     suspend fun refreshSource(sourceId: Long): Int = withContext(Dispatchers.IO) {
         val source = sourceDao.getSourceById(sourceId) ?: return@withContext 0
         try {
-            val parsedFeed = fetcher.fetchAndParse(source.feedUrl)
+            val parsedFeed = try {
+                fetcher.fetchAndParse(source.feedUrl)
+            } catch (e: Exception) {
+                // Fallback 1: try flipping protocol http <-> https
+                val altProtocolUrl = if (source.feedUrl.startsWith("http://", ignoreCase = true)) {
+                    source.feedUrl.replaceFirst("http://", "https://", ignoreCase = true)
+                } else if (source.feedUrl.startsWith("https://", ignoreCase = true)) {
+                    source.feedUrl.replaceFirst("https://", "http://", ignoreCase = true)
+                } else null
+
+                val altResult = if (altProtocolUrl != null) {
+                    try {
+                        val parsed = fetcher.fetchAndParse(altProtocolUrl)
+                        sourceDao.updateFeedUrl(sourceId, altProtocolUrl)
+                        parsed
+                    } catch (_: Exception) { null }
+                } else null
+
+                altResult ?: run {
+                    // Fallback 2: rediscover feed from site URL
+                    val discovery = FeedDiscovery(fetcher)
+                    when (val disc = discovery.discover(source.siteUrl)) {
+                        is DiscoveryResult.Found -> {
+                            sourceDao.updateFeedUrl(sourceId, disc.feedUrl)
+                            disc.parsedFeed
+                        }
+                        else -> throw e
+                    }
+                }
+            }
+
             val newArticlesCount = saveArticles(source, parsedFeed.items)
             sourceDao.recordSuccess(sourceId, System.currentTimeMillis())
             newArticlesCount
@@ -212,15 +270,18 @@ class FeedRepository(
         return newCount
     }
 
-    suspend fun searchArticles(query: String): List<ArticleEntity> = withContext(Dispatchers.IO) {
-        val words = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
-        if (words.isEmpty()) return@withContext emptyList()
+    suspend fun searchArticles(query: String, matchingSourceNames: Set<String> = emptySet()): List<ArticleEntity> = withContext(Dispatchers.IO) {
+        val words = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() && it != "&" }
+        if (words.isEmpty() && matchingSourceNames.isEmpty()) return@withContext emptyList()
 
         val all = articleDao.getAllSearchableArticles()
-        // Search rule: matching case-insensitive, over title, excerpt, and source name. Every word must match.
         all.filter { article ->
-            val haystack = "${article.title} ${article.excerpt} ${article.sourceName}".lowercase()
-            words.all { w -> haystack.contains(w) }
+            val sourceMatch = matchingSourceNames.isNotEmpty() && matchingSourceNames.any { it.equals(article.sourceName, ignoreCase = true) }
+            val textMatch = words.isNotEmpty() && words.all { w ->
+                val haystack = "${article.title} ${article.excerpt} ${article.sourceName}".lowercase()
+                haystack.contains(w)
+            }
+            sourceMatch || textMatch
         }
     }
 

@@ -48,6 +48,16 @@ interface ArticleDao {
     @Query("SELECT * FROM articles WHERE guid = :guid AND sourceId = :sourceId LIMIT 1")
     suspend fun getArticleByGuid(guid: String, sourceId: Long): ArticleEntity?
 
+    @Query("""
+        SELECT * FROM articles 
+        WHERE url = :link 
+           OR guid = :link 
+           OR url = :altLink 
+           OR guid = :altLink 
+        LIMIT 1
+    """)
+    suspend fun findArticleByLinkOrGuid(link: String, altLink: String = link): ArticleEntity?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(article: ArticleEntity): Long
 

@@ -57,6 +57,9 @@ interface SourceDao {
     @Query("UPDATE sources SET muted = :muted WHERE id = :id")
     suspend fun setMuted(id: Long, muted: Boolean)
 
+    @Query("UPDATE sources SET feedUrl = :feedUrl WHERE id = :id")
+    suspend fun updateFeedUrl(id: Long, feedUrl: String)
+
     @Query("""
         UPDATE sources 
         SET lastFetched = :timestamp, 

@@ -59,7 +59,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import com.signal.reader.data.catalog.CatalogRepository
 import com.signal.reader.data.local.SettingsManager
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.local.entity.SourceEntity
@@ -75,14 +77,7 @@ import com.signal.reader.ui.theme.signalPressScale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val ALL_CATEGORIES = listOf(
-    "Architecture",
-    "Product Design",
-    "Visual Art & Design",
-    "Science",
-    "Tech & Culture",
-    "Gaming"
-)
+private val ALL_CATEGORIES = CatalogRepository.ALL_TOPICS
 
 @Composable
 fun SearchScreen(
@@ -93,6 +88,7 @@ fun SearchScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val colors = SignalTheme.colors
     val haptics = rememberSignalHaptics()
     val coroutineScope = rememberCoroutineScope()
@@ -101,6 +97,7 @@ fun SearchScreen(
     var query by remember { mutableStateOf("") }
     var searchArticles by remember { mutableStateOf<List<ArticleEntity>>(emptyList()) }
     val allSources by repository.getAllSourcesFlow().collectAsState(initial = emptyList())
+    val catalogSources = remember { CatalogRepository.getSources(context) }
 
     val focusRequester = remember { FocusRequester() }
 
@@ -108,9 +105,14 @@ fun SearchScreen(
         focusRequester.requestFocus()
     }
 
-    LaunchedEffect(query) {
+    LaunchedEffect(query, allSources, catalogSources) {
         if (query.isNotBlank()) {
-            searchArticles = repository.searchArticles(query)
+            val q = query.trim().lowercase()
+            val categorySourceNames = catalogSources.filter { cs ->
+                cs.topics.any { it.lowercase().contains(q) } || cs.name.lowercase().contains(q)
+            }.map { it.name }.toSet()
+
+            searchArticles = repository.searchArticles(query, categorySourceNames)
         } else {
             searchArticles = emptyList()
         }
@@ -130,13 +132,21 @@ fun SearchScreen(
         }
     }
 
-    // Filter matching sources
-    val matchedSources = remember(queryTrimmed, allSources) {
+    // Filter matching sources (matches name, description, or assigned topics)
+    val matchedSources = remember(queryTrimmed, allSources, catalogSources) {
         if (queryTrimmed.isBlank()) emptyList()
         else {
             val q = queryTrimmed.lowercase()
+            val catalogMatches = catalogSources.filter { cs ->
+                cs.name.lowercase().contains(q) ||
+                cs.description.lowercase().contains(q) ||
+                cs.topics.any { it.lowercase().contains(q) }
+            }.map { it.name.lowercase() }.toSet()
+
             allSources.filter { s ->
-                s.name.lowercase().contains(q) || s.description.lowercase().contains(q)
+                s.name.lowercase().contains(q) ||
+                s.description.lowercase().contains(q) ||
+                catalogMatches.contains(s.name.lowercase())
             }
         }
     }
