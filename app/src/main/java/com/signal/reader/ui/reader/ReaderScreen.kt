@@ -693,8 +693,8 @@ fun ReaderScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .background(colors.card)
-                                    .border(1.dp, colors.line, CircleShape)
+                                    .background(colors.bg)
+                                    .border(1.dp, colors.ink, CircleShape)
                                     .signalPressScale(0.96f) {
                                         haptics.tick()
                                         settingsManager.updateTheme(if (isDarkActive) "light" else "dark")
@@ -730,8 +730,8 @@ fun ReaderScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .background(colors.card)
-                                    .border(1.dp, colors.line, CircleShape)
+                                    .background(colors.bg)
+                                    .border(1.dp, colors.ink, CircleShape)
                                     .signalPressScale(0.96f) {
                                         haptics.tick()
                                         settingsManager.updateFontFamily(if (isSerif) "sans" else "serif")
