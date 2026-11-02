@@ -145,8 +145,11 @@ fun SourcePageScreen(
         }
     }
 
-    LaunchedEffect(sourceId, source, articles.isEmpty()) {
-        if (source != null && articles.isEmpty() && !isRetrying) {
+    LaunchedEffect(sourceId, source?.id) {
+        val s = source ?: return@LaunchedEffect
+        val lastFetched = s.lastFetched
+        val fiveMinutesAgo = System.currentTimeMillis() - 5 * 60 * 1000L
+        if ((articles.isEmpty() || lastFetched < fiveMinutesAgo) && !isRetrying) {
             isRetrying = true
             try {
                 repository.refreshSource(sourceId)

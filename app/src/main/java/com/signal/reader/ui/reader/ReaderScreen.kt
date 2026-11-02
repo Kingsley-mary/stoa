@@ -102,6 +102,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants
@@ -267,8 +269,37 @@ fun ReaderScreen(
         }
     }
 
-    val effectiveHeroImage = remember(currentArticle) {
-        ImageResolver.getEffectiveCoverImage(currentArticle.imageUrl, currentArticle.fullContent, currentArticle.excerpt)
+    val effectiveHeroImage = remember(currentArticle.imageUrl, currentArticle.fullContent, currentArticle.excerpt, extractedHtml) {
+        val candidate = currentArticle.imageUrl.takeIf { !it.isNullOrBlank() && it != "none" }
+        candidate ?: ImageResolver.getEffectiveCoverImage(
+            null,
+            extractedHtml ?: currentArticle.fullContent,
+            currentArticle.excerpt
+        )
+    }
+
+    LaunchedEffect(currentArticle.id) {
+        if (currentArticle.isExcerptOnly && extractedHtml == null && currentArticle.url.isNotBlank()) {
+            isExtracting = true
+            try {
+                val fullHtml = withContext(Dispatchers.IO) {
+                    ReadabilityExtractor.extractArticleHtml(currentArticle.url)
+                }
+                if (!fullHtml.isNullOrBlank()) {
+                    extractedHtml = fullHtml
+                    val repo = com.signal.reader.SignalApplication.instance.repository
+                    repo.updateArticleFullContent(currentArticle.id, fullHtml, false)
+                    if (currentArticle.imageUrl.isNullOrBlank() || currentArticle.imageUrl == "none") {
+                        val doc = org.jsoup.Jsoup.parse(fullHtml)
+                        val newImg = ImageResolver.extractOpenGraphImage(doc) ?: ImageResolver.extractBestImageFromHtml(doc)
+                        if (!newImg.isNullOrBlank()) {
+                            repo.updateArticleImage(currentArticle.id, newImg)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+            isExtracting = false
+        }
     }
 
     val blocks = remember(currentArticle.fullContent, currentArticle.excerpt, extractedHtml, effectiveHeroImage) {
@@ -579,6 +610,17 @@ fun ReaderScreen(
                                     val fullHtml = ReadabilityExtractor.extractArticleHtml(currentArticle.url)
                                     if (!fullHtml.isNullOrBlank()) {
                                         extractedHtml = fullHtml
+                                        try {
+                                            val repo = com.signal.reader.SignalApplication.instance.repository
+                                            repo.updateArticleFullContent(currentArticle.id, fullHtml, false)
+                                            if (currentArticle.imageUrl.isNullOrBlank() || currentArticle.imageUrl == "none") {
+                                                val doc = org.jsoup.Jsoup.parse(fullHtml)
+                                                val newImg = ImageResolver.extractOpenGraphImage(doc) ?: ImageResolver.extractBestImageFromHtml(doc)
+                                                if (!newImg.isNullOrBlank()) {
+                                                    repo.updateArticleImage(currentArticle.id, newImg)
+                                                }
+                                            }
+                                        } catch (_: Exception) {}
                                         haptics.pop()
                                     } else {
                                         haptics.tick()

@@ -16,7 +16,8 @@ object ImageResolver {
 
     private val trackingKeywords = listOf(
         "1x1", "pixel", "tracker", "beacon", "stat.gif", "analytics",
-        "feedburner", "avatar", "icon", "badge", "emoji"
+        "feedburner", "avatar", "icon", "badge", "emoji", "logo", "site-logo",
+        "placeholder", "spacer", "blank.gif", "transparent.gif"
     )
 
     private val wpThumbnailRegex = Regex("""-\d{2,4}x\d{2,4}(\.[a-zA-Z]{3,4}(?:\?.*)?)$""", RegexOption.IGNORE_CASE)
@@ -315,6 +316,7 @@ object ImageResolver {
 
     fun isTrackingUrl(url: String): Boolean {
         val lower = url.lowercase(Locale.ROOT)
+        if (lower.endsWith(".svg") || lower.contains(".svg?") || lower.contains("/svg/")) return true
         return trackingKeywords.any { lower.contains(it) }
     }
 }

@@ -196,20 +196,69 @@ class FeedParserTest {
     }
 
     @Test
+    fun testOgExtractionForHypebeastAndPolygonPages() {
+        val hbFile = java.io.File("../hb_page.html").let { if (it.exists()) it else java.io.File("hb_page.html") }
+        if (hbFile.exists()) {
+            val doc = org.jsoup.Jsoup.parse(hbFile.readText(Charsets.UTF_8))
+            val og = ImageResolver.extractOpenGraphImage(doc)
+            val best = ImageResolver.extractBestImageFromHtml(doc)
+            println("HB page OG image: '$og'")
+            println("HB page Best image: '$best'")
+            assertNotNull("HB page should have extracted image", og ?: best)
+        }
+
+        val polyFile = java.io.File("../poly_page.html").let { if (it.exists()) it else java.io.File("poly_page.html") }
+        if (polyFile.exists()) {
+            val doc = org.jsoup.Jsoup.parse(polyFile.readText(Charsets.UTF_8))
+            val og = ImageResolver.extractOpenGraphImage(doc)
+            val best = ImageResolver.extractBestImageFromHtml(doc)
+            println("Polygon page OG image: '$og'")
+            println("Polygon page Best image: '$best'")
+            assertNotNull("Polygon page should have extracted image", og ?: best)
+        }
+    }
+
+    @Test
     fun testRealPolygonXml() {
         val file = listOf(
-            java.io.File("scratch_polygon_feed.xml"),
-            java.io.File("../scratch_polygon_feed.xml")
+            java.io.File("polygon_feed.xml"),
+            java.io.File("../polygon_feed.xml")
         ).firstOrNull { it.exists() }
         if (file != null && file.exists()) {
             val content = file.readText(Charsets.UTF_8)
             val parsed = FeedParser.parse(content, "https://www.polygon.com/feed/")
-            System.err.println("Parsed Polygon items: " + parsed.items.size)
+            assertTrue("Parsed Polygon items should not be empty", parsed.items.isNotEmpty())
             for (item in parsed.items) {
-                System.err.println("Item: ${item.title}")
-                System.err.println("  imageUrl: ${item.imageUrl}")
-                System.err.println("  excerptOnly: ${item.isExcerptOnly}")
+                println("Polygon Item: '${item.title}' -> img: '${item.imageUrl}'")
+                assertNotNull("Polygon article '${item.title}' must have imageUrl", item.imageUrl)
+                assertFalse("Polygon article '${item.title}' imageUrl should not be blank", item.imageUrl!!.isBlank())
             }
+        }
+    }
+
+    @Test
+    fun testRealHypebeastXml() {
+        val file = listOf(
+            java.io.File("hypebeast_feed.xml"),
+            java.io.File("../hypebeast_feed.xml")
+        ).firstOrNull { it.exists() }
+        if (file != null && file.exists()) {
+            val content = file.readText(Charsets.UTF_8)
+            val parsed = FeedParser.parse(content, "https://hypebeast.com/feed")
+            assertTrue("Parsed Hypebeast items should not be empty", parsed.items.isNotEmpty())
+            for (item in parsed.items) {
+                println("Hypebeast Item: '${item.title}' -> img: '${item.imageUrl}'")
+                assertNotNull("Hypebeast article '${item.title}' must have imageUrl", item.imageUrl)
+                assertFalse("Hypebeast article '${item.title}' imageUrl should not be blank", item.imageUrl!!.isBlank())
+            }
+        }
+    }
+        val parsed = FeedParser.parse(content, "https://hypebeast.com/feed")
+        assertTrue("Parsed Hypebeast items should not be empty", parsed.items.isNotEmpty())
+        for (item in parsed.items) {
+            println("Hypebeast Item: '${item.title}' -> img: '${item.imageUrl}'")
+            assertNotNull("Hypebeast article '${item.title}' must have imageUrl", item.imageUrl)
+            assertFalse("Hypebeast article '${item.title}' imageUrl should not be blank", item.imageUrl!!.isBlank())
         }
     }
 

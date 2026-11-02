@@ -51,9 +51,16 @@ class SignalApplication : Application(), ImageLoaderFactory {
         )
 
         CoroutineScope(Dispatchers.IO).launch {
-            val followed = database.sourceDao().getFollowedSources()
-            notificationManager.syncAllSourceChannels(followed)
-            repository.resolveMissingArticleImages(30)
+            try {
+                // 1. Reset any stale "none" image URLs so they are properly re-resolved
+                repository.resetFailedArticleImages()
+                val followed = database.sourceDao().getFollowedSources()
+                notificationManager.syncAllSourceChannels(followed)
+                // 2. Immediately refresh all followed sources in the background so fresh feeds, CDATA images, and enclosures are parsed
+                repository.refreshAllFollowedSources()
+                // 3. Resolve any remaining missing images
+                repository.resolveMissingArticleImages(50)
+            } catch (_: Exception) {}
         }
     }
 

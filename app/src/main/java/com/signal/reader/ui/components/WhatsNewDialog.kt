@@ -37,8 +37,28 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.14",
+        version = "v1.4.15",
         isCurrent = true,
+        summary = "Stale Database Re-Resolution, Auto-Reader Extraction & Android 11 Package Installer",
+        markdownNotes = """
+### Zero Stale Images (Automatic Re-Resolution)
+- **Automatic Startup Image Recovery**: Clears out legacy "none" placeholders left behind by earlier releases, automatically re-resolving cover artwork in the background via live RSS re-parsing and OpenGraph fallbacks.
+- **Background Sync on Launch**: App startup automatically launches a non-blocking background refresh across all followed publications, populating missing cover artwork without requiring a manual pull-to-refresh.
+- **Logo and SVG Filtering**: Prevents site logos and vector placeholders (e.g. `poly-logo-full-white.svg`) from taking precedence over genuine editorial cover photographs.
+
+### Instant Reader Full Article & Gallery Auto-Extraction
+- **Seamless Excerpt Expansion**: Opening excerpt-only stories (such as Polygon game interviews or Hypebeast gallery articles) now automatically triggers full readability extraction in the background—no more scrolling to the bottom to tap an experimental button.
+- **Gallery Article Auto-Detection**: Articles indicating "view full gallery" or external galleries automatically load all inline high-res figures and videos into the reader.
+- **Offline Persistence**: Extracted full article HTML and newly discovered hero artwork are persisted directly to SQLite for instant and offline reading.
+
+### Android 11 Package Installer Visibility
+- **Package Visibility Compliance**: Declared `<queries>` intent filters and permissions for archive installers on Android 11+ (API 30+), ensuring the system package installer is immediately reachable when tapping "Install now".
+- **World-Readable Cache Permissions**: Sets universal read permissions on update APKs so system installers never fail with silent sandbox permission errors.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.14",
+        isCurrent = false,
         summary = "Polygon & Hypebeast Media Engine, Test Alert ANR Fix & Auto-Refresh",
         markdownNotes = """
 ### Test Alert Non-Blocking Fix

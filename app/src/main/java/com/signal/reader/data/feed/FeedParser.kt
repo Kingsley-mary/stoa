@@ -379,7 +379,12 @@ object FeedParser {
 
         // Full text vs excerpt rule from Brief:
         // Treat an article as full text only if the feed content is clearly article-length (>= 150 words and >= 2 paragraphs)
-        val isExcerptOnly = wordCount < 150 || (wordCount < 250 && paragraphCount <= 1)
+        // AND doesn't explicitly link out to view the full gallery / full story
+        val hasGalleryOrFullLink = fullHtml.contains("view full gallery", ignoreCase = true) ||
+                fullHtml.contains("view full story", ignoreCase = true) ||
+                fullHtml.contains("read full article", ignoreCase = true) ||
+                fullHtml.contains("click here to view full", ignoreCase = true)
+        val isExcerptOnly = hasGalleryOrFullLink || wordCount < 150 || (wordCount < 250 && paragraphCount <= 1)
 
         val excerpt = if (plainText.length > 280) {
             plainText.substring(0, 277).trimEnd() + "…"

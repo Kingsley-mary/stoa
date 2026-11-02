@@ -263,6 +263,18 @@ class FeedRepository(
         totalNew
     }
 
+    suspend fun resetFailedArticleImages() = withContext(Dispatchers.IO) {
+        articleDao.resetFailedArticleImages()
+    }
+
+    suspend fun updateArticleFullContent(articleId: Long, fullContent: String, isExcerptOnly: Boolean = false) = withContext(Dispatchers.IO) {
+        articleDao.updateFullContent(articleId, fullContent, isExcerptOnly)
+    }
+
+    suspend fun updateArticleImage(articleId: Long, imageUrl: String) = withContext(Dispatchers.IO) {
+        articleDao.updateImageUrl(articleId, imageUrl)
+    }
+
     suspend fun resolveMissingArticleImages(limit: Int = 30) = withContext(Dispatchers.IO) {
         val missing = articleDao.getArticlesWithoutImage(limit)
         if (missing.isEmpty()) return@withContext
@@ -298,12 +310,10 @@ class FeedRepository(
                                     } else {
                                         articleDao.updateImageUrl(article.id, "none")
                                     }
-                                } else {
-                                    articleDao.updateImageUrl(article.id, "none")
                                 }
                             }
                         } catch (_: Exception) {
-                            articleDao.updateImageUrl(article.id, "none")
+                            // Don't mark as "none" on network exceptions; allow retry next time
                         }
                     }
                 }
@@ -346,7 +356,7 @@ class FeedRepository(
                     updated = updated.copy(imageUrl = item.imageUrl)
                     needsUpdate = true
                 }
-                if (existing.fullContent.isNullOrBlank() && !item.fullContent.isNullOrBlank()) {
+                if ((existing.fullContent.isNullOrBlank() || existing.isExcerptOnly != item.isExcerptOnly) && !item.fullContent.isNullOrBlank()) {
                     updated = updated.copy(fullContent = item.fullContent, isExcerptOnly = item.isExcerptOnly)
                     needsUpdate = true
                 }
