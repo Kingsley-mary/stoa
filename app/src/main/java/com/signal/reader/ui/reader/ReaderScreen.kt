@@ -1106,14 +1106,33 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
     val seenImages = mutableSetOf<String>()
     heroImageUrl?.let { seenImages.add(it.trim()) }
 
-    val elements = doc.body().select("p, h1, h2, h3, h4, figure, img, blockquote, ul, ol, iframe, video")
+    val elements = doc.body().select("p, h1, h2, h3, h4, figure, img, blockquote, ul, ol, iframe, video, .in-content-video-embed")
     val processedElements = mutableSetOf<org.jsoup.nodes.Element>()
 
     for (el in elements) {
         if (el in processedElements) continue
 
-        when (el.tagName().lowercase()) {
-            "h1", "h2", "h3", "h4" -> {
+        when {
+            el.hasClass("in-content-video-embed") -> {
+                val video = el.selectFirst("video")
+                if (video != null) {
+                    val src = video.attr("src").ifBlank { video.selectFirst("source")?.attr("src") }?.trim()
+                    val poster = video.attr("poster").trim().ifBlank { null }
+                    val title = video.attr("title").trim().ifBlank { null }
+                    if (!src.isNullOrBlank()) {
+                        blocks.add(
+                            ContentBlock.Video(
+                                videoUrl = src,
+                                posterUrl = poster,
+                                title = title,
+                                provider = VideoProvider.HTML5
+                            )
+                        )
+                    }
+                }
+                processedElements.addAll(el.getAllElements())
+            }
+            el.tagName().lowercase() in listOf("h1", "h2", "h3", "h4") -> {
                 val text = el.text().trim()
                 if (text.isNotBlank()) {
                     val level = el.tagName().removePrefix("h").toIntOrNull() ?: 2
@@ -1121,7 +1140,7 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                     processedElements.add(el)
                 }
             }
-            "iframe" -> {
+            el.tagName().equals("iframe", ignoreCase = true) -> {
                 val src = el.attr("src").ifBlank { el.attr("data-src") }.trim()
                 val title = el.attr("title").trim().ifBlank { null }
                 val ytId = extractYouTubeVideoId(src)
@@ -1162,7 +1181,7 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                     }
                 }
             }
-            "video" -> {
+            el.tagName().equals("video", ignoreCase = true) -> {
                 val src = el.attr("src").ifBlank { el.selectFirst("source")?.attr("src") }?.trim()
                 val poster = el.attr("poster").trim().ifBlank { null }
                 val title = el.attr("title").trim().ifBlank { null }
@@ -1178,7 +1197,7 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                     processedElements.addAll(el.getAllElements())
                 }
             }
-            "figure" -> {
+            el.tagName().equals("figure", ignoreCase = true) -> {
                 val iframe = el.selectFirst("iframe")
                 val video = el.selectFirst("video")
                 val img = el.selectFirst("img")
@@ -1234,15 +1253,15 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                         )
                     }
                 } else if (img != null) {
-                    val src = img.attr("src").ifBlank { img.attr("data-src") }.trim()
-                    val caption = el.selectFirst("figcaption")?.text()?.trim()
+                    val src = ImageResolver.extractBestImageUrlFromElement(img) ?: img.attr("src").ifBlank { img.attr("data-src") }.trim()
+                    val caption = el.selectFirst("figcaption, .image-caption, .caption, small")?.text()?.trim()
                     if (!src.isNullOrBlank() && !src.startsWith("data:") && seenImages.add(src)) {
                         blocks.add(ContentBlock.Image(src, caption?.ifBlank { img.attr("alt").trim() }?.ifBlank { null }))
                     }
                 }
                 processedElements.addAll(el.getAllElements())
             }
-            "p" -> {
+            el.tagName().equals("p", ignoreCase = true) -> {
                 val iframe = el.selectFirst("iframe")
                 val video = el.selectFirst("video")
                 val aTag = el.selectFirst("a[href]")
@@ -1320,30 +1339,27 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                 } else {
                     val img = el.selectFirst("img")
                     val text = el.text().trim()
+                    val realSrc = img?.let { ImageResolver.extractBestImageUrlFromElement(it) ?: it.attr("src").ifBlank { it.attr("data-src") }.trim() }
                     if (img != null && text.length < 5) {
-                        val src = img.attr("src").ifBlank { img.attr("data-src") }.trim()
                         val alt = img.attr("alt").trim().ifBlank { img.attr("title").trim() }
-                        if (src.isNotBlank() && !src.startsWith("data:") && seenImages.add(src)) {
-                            blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
+                        if (!realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(realSrc)) {
+                            blocks.add(ContentBlock.Image(realSrc, alt.ifBlank { null }))
                         }
                     } else {
                         if (text.isNotBlank()) {
                             blocks.add(ContentBlock.Paragraph(text = text, html = el.html()))
                         }
-                        if (img != null) {
-                            val src = img.attr("src").ifBlank { img.attr("data-src") }.trim()
+                        if (img != null && !realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(realSrc)) {
                             val alt = img.attr("alt").trim()
-                            if (src.isNotBlank() && !src.startsWith("data:") && seenImages.add(src)) {
-                                blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
-                            }
+                            blocks.add(ContentBlock.Image(realSrc, alt.ifBlank { null }))
                         }
                     }
                     processedElements.add(el)
                 }
             }
-            "img" -> {
+            el.tagName().equals("img", ignoreCase = true) -> {
                 if (el.parent()?.tagName()?.lowercase() !in listOf("figure", "p")) {
-                    val src = el.attr("src").ifBlank { el.attr("data-src") }.trim()
+                    val src = ImageResolver.extractBestImageUrlFromElement(el) ?: el.attr("src").ifBlank { el.attr("data-src") }.trim()
                     val alt = el.attr("alt").trim()
                     if (src.isNotBlank() && !src.startsWith("data:") && seenImages.add(src)) {
                         blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
@@ -1351,14 +1367,14 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                     processedElements.add(el)
                 }
             }
-            "blockquote" -> {
+            el.tagName().equals("blockquote", ignoreCase = true) -> {
                 val text = el.text().trim()
                 if (text.isNotBlank()) {
                     blocks.add(ContentBlock.Quote(text))
                     processedElements.addAll(el.getAllElements())
                 }
             }
-            "ul", "ol" -> {
+            el.tagName().lowercase() in listOf("ul", "ol") -> {
                 val listItems = el.select("li").map { it.text().trim() }.filter { it.isNotBlank() }
                 val htmlItems = el.select("li").map { it.html().trim() }.filter { it.isNotBlank() }
                 if (listItems.isNotEmpty()) {

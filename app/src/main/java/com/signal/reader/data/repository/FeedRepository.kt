@@ -340,11 +340,22 @@ class FeedRepository(
                     newArticles.add(entity.copy(id = insertedId))
                 }
             } else {
+                var updated = existing
+                var needsUpdate = false
                 if ((existing.imageUrl.isNullOrBlank() || existing.imageUrl == "none") && !item.imageUrl.isNullOrBlank()) {
-                    articleDao.updateImageUrl(existing.id, item.imageUrl)
+                    updated = updated.copy(imageUrl = item.imageUrl)
+                    needsUpdate = true
                 }
                 if (existing.fullContent.isNullOrBlank() && !item.fullContent.isNullOrBlank()) {
-                    articleDao.update(existing.copy(fullContent = item.fullContent, isExcerptOnly = item.isExcerptOnly))
+                    updated = updated.copy(fullContent = item.fullContent, isExcerptOnly = item.isExcerptOnly)
+                    needsUpdate = true
+                }
+                if (existing.excerpt.isBlank() && item.excerpt.isNotBlank()) {
+                    updated = updated.copy(excerpt = item.excerpt)
+                    needsUpdate = true
+                }
+                if (needsUpdate) {
+                    articleDao.update(updated)
                 }
             }
         }

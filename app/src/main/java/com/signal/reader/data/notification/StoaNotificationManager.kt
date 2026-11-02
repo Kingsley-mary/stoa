@@ -27,7 +27,8 @@ import com.signal.reader.R
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.local.entity.SourceEntity
 import com.signal.reader.ui.components.getSourceInitials
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class StoaNotificationManager(private val context: Context) {
 
@@ -134,10 +135,10 @@ class StoaNotificationManager(private val context: Context) {
         }
     }
 
-    fun postNewArticlesNotification(source: SourceEntity, newArticles: List<ArticleEntity>) {
-        if (newArticles.isEmpty()) return
-        if (!source.notificationsEnabled) return
-        if (!isChannelEnabledInSystem(source.id)) return
+    suspend fun postNewArticlesNotification(source: SourceEntity, newArticles: List<ArticleEntity>) = withContext(Dispatchers.IO) {
+        if (newArticles.isEmpty()) return@withContext
+        if (!source.notificationsEnabled) return@withContext
+        if (!isChannelEnabledInSystem(source.id)) return@withContext
 
         syncSourceChannel(source)
         val channelId = getChannelIdForSource(source.id)
@@ -175,7 +176,7 @@ class StoaNotificationManager(private val context: Context) {
                         .data(article.imageUrl)
                         .allowHardware(false)
                         .build()
-                    val res = runBlocking { context.imageLoader.execute(req) }
+                    val res = context.imageLoader.execute(req)
                     (res as? SuccessResult)?.drawable?.toBitmap()
                 } catch (_: Exception) {
                     null
@@ -261,8 +262,8 @@ class StoaNotificationManager(private val context: Context) {
         }
     }
 
-    fun postTestNotification(): Boolean {
-        if (!areNotificationsGloballyEnabled()) return false
+    suspend fun postTestNotification(): Boolean = withContext(Dispatchers.IO) {
+        if (!areNotificationsGloballyEnabled()) return@withContext false
         val sampleSource = SourceEntity(
             id = 99901L,
             name = "Stoa Editorial",
@@ -281,10 +282,10 @@ class StoaNotificationManager(private val context: Context) {
             publishedTime = System.currentTimeMillis()
         )
         postNewArticlesNotification(sampleSource, listOf(sampleArticle))
-        return true
+        true
     }
 
-    private fun getSourceIconBitmap(source: SourceEntity, targetSize: Int = 128): Bitmap {
+    private suspend fun getSourceIconBitmap(source: SourceEntity, targetSize: Int = 128): Bitmap = withContext(Dispatchers.IO) {
         val domain = source.siteUrl
             .trim()
             .removePrefix("https://")
@@ -305,15 +306,15 @@ class StoaNotificationManager(private val context: Context) {
                     .data(faviconUrl)
                     .allowHardware(false)
                     .build()
-                val result = runBlocking { loader.execute(request) }
+                val result = loader.execute(request)
                 if (result is SuccessResult) {
                     val rawBitmap = result.drawable.toBitmap()
-                    return createCircularIconBitmap(rawBitmap, targetSize)
+                    return@withContext createCircularIconBitmap(rawBitmap, targetSize)
                 }
             } catch (_: Exception) {}
         }
 
-        return createMonogramBitmap(source.name, targetSize)
+        createMonogramBitmap(source.name, targetSize)
     }
 
     private fun createCircularIconBitmap(rawBitmap: Bitmap, targetSize: Int = 128): Bitmap {

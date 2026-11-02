@@ -145,6 +145,16 @@ fun SourcePageScreen(
         }
     }
 
+    LaunchedEffect(sourceId, source, articles.isEmpty()) {
+        if (source != null && articles.isEmpty() && !isRetrying) {
+            isRetrying = true
+            try {
+                repository.refreshSource(sourceId)
+            } catch (_: Exception) {}
+            isRetrying = false
+        }
+    }
+
     fun openWebsite(url: String) {
         if (url.isNotBlank()) {
             if (onOpenWebsite != null) {

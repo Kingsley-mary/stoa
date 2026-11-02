@@ -24,11 +24,31 @@ object ImageResolver {
     private val mediumWidthRegex = Regex("""/max/\d+/""")
 
     /**
+     * Unescapes HTML hex & named entities often present in meta tags and URLs.
+     */
+    fun cleanUrl(raw: String?): String {
+        if (raw.isNullOrBlank()) return ""
+        var s = raw.trim().trim('"', '\'')
+        return s.replace("&amp;", "&")
+            .replace("&#x3A;", ":", ignoreCase = true)
+            .replace("&#x2F;", "/", ignoreCase = true)
+            .replace("&#x3F;", "?", ignoreCase = true)
+            .replace("&#x3D;", "=", ignoreCase = true)
+            .replace("&#x20;", " ", ignoreCase = true)
+            .replace("&#38;", "&")
+            .replace("&#58;", ":")
+            .replace("&#47;", "/")
+            .replace("&#63;", "?")
+            .replace("&#61;", "=")
+            .trim()
+    }
+
+    /**
      * Upgrades an image URL from low-res/thumbnail to its full-resolution counterpart.
      */
     fun resolveHighRes(rawUrl: String?): String? {
         if (rawUrl.isNullOrBlank()) return null
-        var url = rawUrl.trim().replace("&amp;", "&").trim('"', '\'')
+        var url = cleanUrl(rawUrl)
 
         // Ignore tracking pixels and data URIs
         if (url.startsWith("data:", ignoreCase = true) || isTrackingUrl(url)) {
@@ -102,7 +122,7 @@ object ImageResolver {
 
     /**
      * Extracts the highest quality image from an HTML Document, inspecting picture/srcset,
-     * img tags, and embedded video posters (e.g. YouTube).
+     * img tags, embedded video posters (e.g. YouTube, HTML5), and gallery containers.
      */
     fun extractBestImageFromHtml(doc: Document): String? {
         // 1. Picture source tags
@@ -131,6 +151,29 @@ object ImageResolver {
             val videoThumb = extractVideoThumbnail(src)
             if (!videoThumb.isNullOrBlank()) {
                 return videoThumb
+            }
+        }
+
+        // 4. HTML5 video poster tags
+        val videoPosters = doc.select("video[poster]")
+        for (v in videoPosters) {
+            val poster = cleanUrl(v.attr("poster"))
+            if (poster.isNotBlank() && !poster.startsWith("data:") && !isTrackingUrl(poster)) {
+                return resolveHighRes(poster)
+            }
+        }
+
+        // 5. Gallery containers with data-images or JSON (e.g. Hypebeast, WordPress galleries)
+        val galleryElements = doc.select("[data-images]")
+        for (gallery in galleryElements) {
+            val dataImages = gallery.attr("data-images")
+            val urlRegex = Regex("""https?:\\?/\\?/[^"'\s\\]+\.(?:jpg|jpeg|png|webp)(?:\?[^"'\s\\]*)?""", RegexOption.IGNORE_CASE)
+            val match = urlRegex.find(dataImages)
+            if (match != null) {
+                val galleryUrl = cleanUrl(match.value.replace("\\/", "/"))
+                if (!isTrackingUrl(galleryUrl)) {
+                    return resolveHighRes(galleryUrl)
+                }
             }
         }
 
@@ -164,7 +207,8 @@ object ImageResolver {
         )
 
         for (selector in ogSelectors) {
-            val content = doc.select(selector).attr("content").trim()
+            val raw = doc.select(selector).attr("content").trim()
+            val content = cleanUrl(raw)
             if (content.isNotBlank() && !content.startsWith("data:") && !isTrackingUrl(content)) {
                 return resolveHighRes(content)
             }
@@ -202,12 +246,25 @@ object ImageResolver {
             }
         }
 
-        // Check high-res data attributes common in WordPress, Squarespace, Ghost, Substack
+        // Check if inside a <picture> element with <source srcset>
+        val parentPicture = el.parent()?.takeIf { it.tagName().equals("picture", ignoreCase = true) }
+        if (parentPicture != null) {
+            for (source in parentPicture.select("source[srcset]")) {
+                val best = extractHighestResFromSrcset(source.attr("srcset"))
+                if (!best.isNullOrBlank() && !isTrackingUrl(best)) {
+                    return best
+                }
+            }
+        }
+
+        // Check high-res data attributes common in modern CMSs (WordPress, Vox/Polygon, Hypebeast, Substack)
         val candidateAttrs = listOf(
             "data-orig-file",
             "data-large-file",
             "data-full-url",
             "data-src-large",
+            "data-img-url",
+            "data-flickity-lazyload-src",
             "data-src",
             "data-lazy-src",
             "abs:src",
@@ -215,7 +272,7 @@ object ImageResolver {
         )
 
         for (attr in candidateAttrs) {
-            val value = el.attr(attr).trim().replace("&amp;", "&").trim('"', '\'')
+            val value = cleanUrl(el.attr(attr))
             if (value.isNotBlank() && !value.startsWith("data:") && !isTrackingUrl(value)) {
                 return value
             }
@@ -227,7 +284,7 @@ object ImageResolver {
     /**
      * Parses an HTML srcset string (e.g. "url1 400w, url2 1200w, url3 2048w") and picks the URL with largest width.
      */
-    private fun extractHighestResFromSrcset(srcset: String): String? {
+    fun extractHighestResFromSrcset(srcset: String): String? {
         try {
             val entries = srcset.split(",")
             var maxW = 0
@@ -236,7 +293,7 @@ object ImageResolver {
             for (entry in entries) {
                 val parts = entry.trim().split(Regex("""\s+"""))
                 if (parts.isNotEmpty()) {
-                    val candidateUrl = parts[0].replace("&amp;", "&").trim('"', '\'')
+                    val candidateUrl = cleanUrl(parts[0])
                     if (isTrackingUrl(candidateUrl)) continue
 
                     val descriptor = if (parts.size > 1) parts[1].lowercase(Locale.ROOT) else ""
@@ -256,7 +313,7 @@ object ImageResolver {
         }
     }
 
-    private fun isTrackingUrl(url: String): Boolean {
+    fun isTrackingUrl(url: String): Boolean {
         val lower = url.lowercase(Locale.ROOT)
         return trackingKeywords.any { lower.contains(it) }
     }

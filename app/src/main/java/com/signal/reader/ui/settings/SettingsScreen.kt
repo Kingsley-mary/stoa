@@ -504,12 +504,14 @@ fun SettingsScreen(
                                         } catch (_: Exception) {}
                                     }
                                 } else {
-                                    val dispatched = notifManager.postTestNotification()
-                                    Toast.makeText(
-                                        context,
-                                        if (dispatched) "Test publication alert dispatched" else "Could not post test alert",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    coroutineScope.launch {
+                                        val dispatched = notifManager.postTestNotification()
+                                        Toast.makeText(
+                                            context,
+                                            if (dispatched) "Test publication alert dispatched" else "Could not post test alert",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
                                 }
                             }
                         )
@@ -623,7 +625,7 @@ fun SettingsScreen(
 
                         SettingsActionRow(
                             label = "What’s new in Stoa",
-                            sublabel = "Release notes for v1.4.13, v1.4.12 & v1.4.11",
+                            sublabel = "Release notes for v1.4.14, v1.4.13 & v1.4.12",
                             onClick = { showWhatsNewDialog = true }
                         )
 

@@ -37,8 +37,31 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.13",
+        version = "v1.4.14",
         isCurrent = true,
+        summary = "Polygon & Hypebeast Media Engine, Test Alert ANR Fix & Auto-Refresh",
+        markdownNotes = """
+### Test Alert Non-Blocking Fix
+- **Instant Diagnostics**: Dispatches test publication notifications asynchronously on background IO threads, completely resolving the UI freeze / ANR on Android 11+.
+
+### Hypebeast Galleries & Clean Cover Resolution
+- **Gallery Extraction Engine**: Parses JavaScript carousel galleries (`[data-images]`) into native editorial figures, displaying full photo galleries inline in the reader.
+- **Hex Entity Sanitization**: Resolves Hypebeast OpenGraph and Twitter card cover artwork by unescaping HTML hex entities (`&#x3A;`, `&#x2F;`, `&#x3F;`, `&amp;`).
+- **Retroactive Cover & Excerpt Backfill**: Pull-to-refresh now backfills missing covers, excerpts, and full text for existing saved articles.
+
+### Polygon Media & In-Content Video Player
+- **Embedded Story Videos**: In-content video players (such as Polygon / AdsNinja story trailers) are preserved and rendered as native, responsive video players in the reader.
+- **Lazy-Load Image Promotion**: Promotes lazy loaded `data-img-url`, `data-src`, `data-orig-file`, and `<picture>` sources to full-res images, bypassing dummy base64 placeholders.
+- **Captions & Figcaption Support**: Added support for `.image-caption`, `small`, and custom caption tags across modern CMS layouts.
+
+### Identity Designed & Dormant Publication Auto-Refresh
+- **Instant Source Auto-Refresh**: Navigating to any source with 0 articles automatically triggers a live sync.
+- **Archival Protection**: The 15 newest articles for every followed source are protected indefinitely regardless of publication year.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.13",
+        isCurrent = false,
         summary = "Reliable In-App Installer, CDATA Image Engine & Notification Diagnostics",
         markdownNotes = """
 ### In-App Package Installer & Browser Fallback

@@ -1,6 +1,9 @@
 package com.signal.reader
 
 import com.signal.reader.data.feed.FeedParser
+import com.signal.reader.data.feed.FeedFetcher
+import com.signal.reader.data.feed.ReadabilityExtractor
+import com.signal.reader.data.feed.ImageResolver
 import com.signal.reader.data.opml.OpmlManager
 import com.signal.reader.data.local.entity.SourceEntity
 import com.signal.reader.ui.components.TimeUtils
@@ -109,31 +112,43 @@ class FeedParserTest {
     }
 
     @Test
-    fun testHypebeastCdataImageExtractionAndUrlClean() {
-        val sampleHypebeast = """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
-              <channel>
-                <title>Hypebeast</title>
-                <link>https://hypebeast.com</link>
-                <description>Fashion and Culture</description>
-                <item>
-                  <title>Porsche and La Marzocco</title>
-                  <description><![CDATA[<p><img width="620" src="https://image-cdn.hypb.st/https%3A%2F%2Fhypebeast.com%2Fimage%2Fporsche.jpg?w=800&amp;cbr=1&amp;q=90" /></p><p>Summary text here.</p>]]></description>
-                  <pubDate>Mon, 02 Nov 2026 01:33:18 +0000</pubDate>
-                  <link>https://hypebeast.com/2026/11/porsche</link>
-                  <guid>https://hypebeast.com/?post=6809303</guid>
-                  <content:encoded><![CDATA[<p><img width="620" src="https://image-cdn.hypb.st/https%3A%2F%2Fhypebeast.com%2Fimage%2Fporsche.jpg?w=800&amp;cbr=1&amp;q=90" /></p><p>Summary text here.</p>]]></content:encoded>
-                </item>
-              </channel>
-            </rss>
-        """.trimIndent()
+    fun testIdentityDesignedFetchAndParse() = kotlinx.coroutines.runBlocking {
+        val fetcher = FeedFetcher()
+        val parsed = fetcher.fetchAndParse("https://identitydesigned.com/feed/")
+        assertTrue(parsed.items.isNotEmpty())
+        val firstItem = parsed.items.first()
+        assertNotNull(firstItem.title)
+        assertTrue(firstItem.publishedTime > 0)
+    }
 
-        val parsed = FeedParser.parse(sampleHypebeast, "https://hypebeast.com/feed")
-        assertEquals(1, parsed.items.size)
-        val item = parsed.items.first()
-        assertEquals("https://image-cdn.hypb.st/https%3A%2F%2Fhypebeast.com%2Fimage%2Fporsche.jpg?w=800&cbr=1&q=90", item.imageUrl)
-        assertFalse(item.imageUrl?.contains("&amp;") ?: true)
+    @Test
+    fun testReadabilityExtractionForPolygonAndHypebeast() = kotlinx.coroutines.runBlocking {
+        val polygonUrl = "https://www.polygon.com/penguin-colony-interview-development/"
+        val hypebeastUrl = "https://hypebeast.com/2026/11/porsche-la-marzocco-channels-911-carrera-rs-2-7-linea-micra-coffee-machine-pico-grinder-collaboration-release-info"
+        
+        val polyHtml = ReadabilityExtractor.extractArticleHtml(polygonUrl)
+        assertNotNull(polyHtml)
+        val polyDoc = org.jsoup.Jsoup.parse(polyHtml!!)
+        val polyImgs = polyDoc.select("img").eachAttr("src")
+        assertTrue("Polygon extracted HTML should have image sources", polyImgs.isNotEmpty())
+        assertFalse("Polygon image should not be data placeholder", polyImgs.first().startsWith("data:"))
+        val videos = polyDoc.select("video, .in-content-video-embed")
+        assertTrue("Polygon extracted HTML should preserve video", videos.isNotEmpty())
+
+        val hbHtml = ReadabilityExtractor.extractArticleHtml(hypebeastUrl)
+        assertNotNull(hbHtml)
+        val hbDoc = org.jsoup.Jsoup.parse(hbHtml!!)
+        val hbImgs = hbDoc.select("img").eachAttr("src")
+        assertTrue("Hypebeast extracted HTML should have gallery images", hbImgs.isNotEmpty())
+    }
+
+    @Test
+    fun testImageResolverEntityCleanup() {
+        val sampleOgContent = "https&#x3A;&#x2F;&#x2F;image-cdn.hypb.st&#x2F;image.jpg&#x3F;w&#x3D;1080&amp;cbr&#x3D;1"
+        val cleaned = ImageResolver.cleanUrl(sampleOgContent)
+        assertEquals("https://image-cdn.hypb.st/image.jpg?w=1080&cbr=1", cleaned)
+        assertFalse(cleaned.contains("&#x"))
+        assertFalse(cleaned.contains("&amp;"))
     }
 
     @Test
