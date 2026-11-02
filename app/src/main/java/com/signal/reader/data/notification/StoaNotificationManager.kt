@@ -8,14 +8,26 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.Typeface
 import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import com.signal.reader.MainActivity
 import com.signal.reader.R
 import com.signal.reader.data.local.entity.ArticleEntity
 import com.signal.reader.data.local.entity.SourceEntity
+import com.signal.reader.ui.components.getSourceInitials
+import kotlinx.coroutines.runBlocking
 
 class StoaNotificationManager(private val context: Context) {
 
@@ -130,6 +142,7 @@ class StoaNotificationManager(private val context: Context) {
         syncSourceChannel(source)
         val channelId = getChannelIdForSource(source.id)
         val groupKey = "group_${source.id}"
+        val sourceIcon = getSourceIconBitmap(source)
 
         if (newArticles.size == 1) {
             // Single article notification
@@ -148,13 +161,36 @@ class StoaNotificationManager(private val context: Context) {
 
             val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(R.drawable.ic_notification)
+                .setLargeIcon(sourceIcon)
                 .setContentTitle(article.title)
                 .setContentText("${source.name} • ${article.excerpt.take(90)}")
-                .setStyle(NotificationCompat.BigTextStyle().bigText(article.excerpt))
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
                 .setGroup(groupKey)
                 .setColor(0xFF141414.toInt())
+
+            val heroBitmap = if (!article.imageUrl.isNullOrBlank()) {
+                try {
+                    val req = ImageRequest.Builder(context)
+                        .data(article.imageUrl)
+                        .allowHardware(false)
+                        .build()
+                    val res = runBlocking { context.imageLoader.execute(req) }
+                    (res as? SuccessResult)?.drawable?.toBitmap()
+                } catch (_: Exception) {
+                    null
+                }
+            } else null
+
+            if (heroBitmap != null) {
+                builder.setStyle(
+                    NotificationCompat.BigPictureStyle()
+                        .bigPicture(heroBitmap)
+                        .setSummaryText(source.name)
+                )
+            } else {
+                builder.setStyle(NotificationCompat.BigTextStyle().bigText(article.excerpt))
+            }
 
             notificationManager.notify(article.id.toInt(), builder.build())
         } else {
@@ -187,6 +223,7 @@ class StoaNotificationManager(private val context: Context) {
 
                 val itemNotification = NotificationCompat.Builder(context, channelId)
                     .setSmallIcon(R.drawable.ic_notification)
+                    .setLargeIcon(sourceIcon)
                     .setContentTitle(article.title)
                     .setContentText("${source.name} • ${article.excerpt.take(80)}")
                     .setContentIntent(articlePendingIntent)
@@ -209,6 +246,7 @@ class StoaNotificationManager(private val context: Context) {
 
             val summaryNotification = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(R.drawable.ic_notification)
+                .setLargeIcon(sourceIcon)
                 .setContentTitle(source.name)
                 .setContentText("${newArticles.size} new stories published")
                 .setStyle(inboxStyle)
@@ -221,5 +259,93 @@ class StoaNotificationManager(private val context: Context) {
 
             notificationManager.notify((source.id * 10000).toInt(), summaryNotification)
         }
+    }
+
+    private fun getSourceIconBitmap(source: SourceEntity, targetSize: Int = 128): Bitmap {
+        val domain = source.siteUrl
+            .trim()
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .removePrefix("www.")
+            .substringBefore("/")
+            .substringBefore(":")
+            .lowercase()
+
+        val faviconUrl = if (domain.isNotBlank()) {
+            "https://www.google.com/s2/favicons?domain=$domain&sz=128"
+        } else null
+
+        if (!faviconUrl.isNullOrBlank()) {
+            try {
+                val loader = context.imageLoader
+                val request = ImageRequest.Builder(context)
+                    .data(faviconUrl)
+                    .allowHardware(false)
+                    .build()
+                val result = runBlocking { loader.execute(request) }
+                if (result is SuccessResult) {
+                    val rawBitmap = result.drawable.toBitmap()
+                    return createCircularIconBitmap(rawBitmap, targetSize)
+                }
+            } catch (_: Exception) {}
+        }
+
+        return createMonogramBitmap(source.name, targetSize)
+    }
+
+    private fun createCircularIconBitmap(rawBitmap: Bitmap, targetSize: Int = 128): Bitmap {
+        val output = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+
+        // Draw solid white circular background
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+        }
+        val radius = targetSize / 2f
+        canvas.drawCircle(radius, radius, radius, bgPaint)
+
+        // Subtle boundary stroke
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x22000000.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        canvas.drawCircle(radius, radius, radius - 1f, borderPaint)
+
+        // Draw the favicon centered with inset padding
+        val inset = (targetSize * 0.16f).toInt()
+        val destRect = Rect(inset, inset, targetSize - inset, targetSize - inset)
+        val srcRect = Rect(0, 0, rawBitmap.width, rawBitmap.height)
+        val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        canvas.drawBitmap(rawBitmap, srcRect, destRect, bitmapPaint)
+
+        return output
+    }
+
+    private fun createMonogramBitmap(sourceName: String, targetSize: Int = 128): Bitmap {
+        val output = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+
+        // Draw solid dark circular background
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF141414.toInt()
+            style = Paint.Style.FILL
+        }
+        val radius = targetSize / 2f
+        canvas.drawCircle(radius, radius, radius, bgPaint)
+
+        // Draw initials centered
+        val initials = getSourceInitials(sourceName)
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = targetSize * 0.42f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val yPos = radius - ((textPaint.descent() + textPaint.ascent()) / 2f)
+        canvas.drawText(initials, radius, yPos, textPaint)
+
+        return output
     }
 }
