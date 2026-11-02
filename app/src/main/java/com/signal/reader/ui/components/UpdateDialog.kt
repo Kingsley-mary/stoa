@@ -208,7 +208,7 @@ fun UpdateDialog(
 
                     is UpdateState.Downloading -> {
                         Text(
-                            text = "Downloading v${updateState.progressPercent}%",
+                            text = "Downloading (${updateState.progressPercent}%)",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.ink,
