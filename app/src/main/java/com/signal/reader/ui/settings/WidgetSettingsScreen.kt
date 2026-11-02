@@ -151,7 +151,7 @@ fun WidgetSettingsScreen(
                     .border(1.dp, previewBorderColor, RoundedCornerShape(24.dp))
             ) {
                 // Background Article Image if article_image mode
-                if (effectiveBg == "article_image" && !heroArticle?.imageUrl.isNullOrBlank()) {
+                if (effectiveBg == "article_image" && !heroArticle?.imageUrl.isNullOrBlank() && heroArticle.imageUrl != "none") {
                     AsyncImage(
                         model = heroArticle!!.imageUrl,
                         contentDescription = null,

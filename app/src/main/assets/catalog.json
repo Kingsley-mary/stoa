@@ -171,7 +171,7 @@
     "name": "Polygon",
     "description": "Video games, gaming culture, entertainment and film",
     "siteUrl": "https://www.polygon.com",
-    "feedUrl": "https://www.polygon.com/rss/index.xml",
+    "feedUrl": "https://www.polygon.com/feed/",
     "topics": ["Games", "Film"]
   },
   {

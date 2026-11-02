@@ -175,9 +175,9 @@ fun HomeScreen(
     // Hero rule: newest unread article with image in active set; fallback to newest unread or newest with image
     val heroArticle: ArticleEntity? = remember(filteredArticles, isCompactLayout) {
         if (isCompactLayout || filteredArticles.isEmpty()) null
-        else filteredArticles.firstOrNull { !it.read && !it.imageUrl.isNullOrBlank() }
+        else filteredArticles.firstOrNull { !it.read && !it.imageUrl.isNullOrBlank() && it.imageUrl != "none" }
             ?: filteredArticles.firstOrNull { !it.read }
-            ?: filteredArticles.firstOrNull { !it.imageUrl.isNullOrBlank() }
+            ?: filteredArticles.firstOrNull { !it.imageUrl.isNullOrBlank() && it.imageUrl != "none" }
             ?: filteredArticles.firstOrNull()
     }
 

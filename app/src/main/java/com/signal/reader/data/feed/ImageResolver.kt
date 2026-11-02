@@ -175,7 +175,7 @@ object ImageResolver {
      * or falls back to extracting the first valid content image from fullContent or excerpt HTML.
      */
     fun getEffectiveCoverImage(imageUrl: String?, fullContent: String?, excerpt: String?): String? {
-        if (!imageUrl.isNullOrBlank()) return imageUrl
+        if (!imageUrl.isNullOrBlank() && imageUrl != "none") return imageUrl
         if (!fullContent.isNullOrBlank()) {
             val extracted = extractBestImageFromHtml(org.jsoup.Jsoup.parse(fullContent))
             if (!extracted.isNullOrBlank()) return extracted

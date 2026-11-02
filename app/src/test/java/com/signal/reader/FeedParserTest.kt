@@ -153,6 +153,24 @@ class FeedParserTest {
     }
 
     @Test
+    fun testRealPolygonXml() {
+        val file = listOf(
+            java.io.File("scratch_polygon_feed.xml"),
+            java.io.File("../scratch_polygon_feed.xml")
+        ).firstOrNull { it.exists() }
+        if (file != null && file.exists()) {
+            val content = file.readText(Charsets.UTF_8)
+            val parsed = FeedParser.parse(content, "https://www.polygon.com/feed/")
+            System.err.println("Parsed Polygon items: " + parsed.items.size)
+            for (item in parsed.items) {
+                System.err.println("Item: ${item.title}")
+                System.err.println("  imageUrl: ${item.imageUrl}")
+                System.err.println("  excerptOnly: ${item.isExcerptOnly}")
+            }
+        }
+    }
+
+    @Test
     fun testRealRestOfWorldXml() {
         val file = java.io.File("restofworld.xml")
         if (file.exists()) {

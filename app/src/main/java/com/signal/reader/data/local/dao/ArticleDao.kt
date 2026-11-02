@@ -93,6 +93,12 @@ interface ArticleDao {
     @Query("DELETE FROM articles WHERE sourceId = :sourceId AND saved = 0")
     suspend fun deleteUnsavedBySourceId(sourceId: Long)
 
+    @Query("SELECT id FROM articles WHERE sourceId = :sourceId ORDER BY publishedTime DESC LIMIT :limit")
+    suspend fun getRecentArticleIdsForSource(sourceId: Long, limit: Int = 15): List<Long>
+
+    @Query("DELETE FROM articles WHERE saved = 0 AND publishedTime < :cutoffTimestamp AND id NOT IN (:protectedIds)")
+    suspend fun pruneOldUnsavedArticlesExcluding(cutoffTimestamp: Long, protectedIds: List<Long>): Int
+
     @Query("DELETE FROM articles WHERE saved = 0 AND publishedTime < :cutoffTimestamp")
     suspend fun pruneOldUnsavedArticles(cutoffTimestamp: Long): Int
 

@@ -21,6 +21,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
@@ -266,29 +268,46 @@ class FeedRepository(
         if (missing.isEmpty()) return@withContext
 
         val client = FeedFetcher.createDefaultClient()
-        for (article in missing) {
-            val url = article.url
-            if (url.isBlank()) continue
-            try {
-                val req = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36 StoaReader/1.4")
-                    .build()
-                client.newCall(req).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string()
-                        if (!body.isNullOrBlank()) {
-                            val doc = Jsoup.parse(body)
-                            val ogImg = ImageResolver.extractOpenGraphImage(doc)
-                                ?: ImageResolver.extractBestImageFromHtml(doc)
-                            if (!ogImg.isNullOrBlank()) {
-                                articleDao.updateImageUrl(article.id, ogImg)
+        val semaphore = Semaphore(4)
+        coroutineScope {
+            missing.map { article ->
+                async {
+                    val url = article.url
+                    if (url.isBlank()) {
+                        articleDao.updateImageUrl(article.id, "none")
+                        return@async
+                    }
+                    semaphore.withPermit {
+                        try {
+                            val req = Request.Builder()
+                                .url(url)
+                                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36 StoaReader/1.4")
+                                .build()
+                            client.newCall(req).execute().use { response ->
+                                if (response.isSuccessful) {
+                                    val body = response.body?.string()
+                                    if (!body.isNullOrBlank()) {
+                                        val doc = Jsoup.parse(body)
+                                        val ogImg = ImageResolver.extractOpenGraphImage(doc)
+                                            ?: ImageResolver.extractBestImageFromHtml(doc)
+                                        if (!ogImg.isNullOrBlank()) {
+                                            articleDao.updateImageUrl(article.id, ogImg)
+                                        } else {
+                                            articleDao.updateImageUrl(article.id, "none")
+                                        }
+                                    } else {
+                                        articleDao.updateImageUrl(article.id, "none")
+                                    }
+                                } else {
+                                    articleDao.updateImageUrl(article.id, "none")
+                                }
                             }
+                        } catch (_: Exception) {
+                            articleDao.updateImageUrl(article.id, "none")
                         }
                     }
                 }
-            } catch (_: Exception) {
-            }
+            }.awaitAll()
         }
     }
 
@@ -320,6 +339,13 @@ class FeedRepository(
                 if (insertedId > 0) {
                     newArticles.add(entity.copy(id = insertedId))
                 }
+            } else {
+                if ((existing.imageUrl.isNullOrBlank() || existing.imageUrl == "none") && !item.imageUrl.isNullOrBlank()) {
+                    articleDao.updateImageUrl(existing.id, item.imageUrl)
+                }
+                if (existing.fullContent.isNullOrBlank() && !item.fullContent.isNullOrBlank()) {
+                    articleDao.update(existing.copy(fullContent = item.fullContent, isExcerptOnly = item.isExcerptOnly))
+                }
             }
         }
         return newArticles
@@ -342,7 +368,17 @@ class FeedRepository(
 
     suspend fun pruneOldUnsavedArticles(): Int = withContext(Dispatchers.IO) {
         val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30)
-        articleDao.pruneOldUnsavedArticles(cutoff)
+        // Keep at least the 15 most recent articles for every source so slow/dormant feeds are never wiped out
+        val sources = sourceDao.getAllSources()
+        val protectedIds = mutableListOf<Long>()
+        for (source in sources) {
+            protectedIds.addAll(articleDao.getRecentArticleIdsForSource(source.id, 15))
+        }
+        if (protectedIds.isEmpty()) {
+            articleDao.pruneOldUnsavedArticles(cutoff)
+        } else {
+            articleDao.pruneOldUnsavedArticlesExcluding(cutoff, protectedIds)
+        }
     }
 
     suspend fun populateStarterSourcesIfEmpty() = withContext(Dispatchers.IO) {

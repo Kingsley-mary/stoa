@@ -37,8 +37,25 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.11",
+        version = "v1.4.12",
         isCurrent = true,
+        summary = "Cover Photo Engine, Slow Feed Protection & Canonical Feeds",
+        markdownNotes = """
+### Cover Photo Resolution Engine
+- **Unblocked Scraper Queue**: Upgraded background OpenGraph scraper to 4 concurrent workers with sentinel tracking, eliminating head-of-line blocking so all articles get their cover photos.
+- **Image Backfill on Refresh**: Existing articles in your database are automatically updated with fresh cover images on pull-to-refresh.
+
+### Slow & Dormant Feed Protection
+- **Archival Retention**: Stoa now protects the 15 most recent articles of every publication from the 30-day cleanup, ensuring seasonal or slow-publishing publications (like Identity Designed) are never wiped out.
+- **Directory Search**: Added Identity Designed directly into the Visual Art & Design directory.
+
+### Feed Reliability
+- **Direct Polygon Feed**: Migrated Polygon’s catalog feed directly to `/feed/` to bypass intermediate redirect timeouts.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.11",
+        isCurrent = false,
         summary = "Publication Notification Icons, Quote Share & Button Tokens",
         markdownNotes = """
 ### Publication Notification Icons
@@ -50,9 +67,6 @@ val STOA_RECENT_RELEASES = listOf(
 
 ### Source Alerts Beside Mute
 - **Streamlined Placement**: Dedicated alert toggle pill right beside the Mute button on source pages.
-
-### Tactile Button Tokens
-- **Hairline Protection**: Unified design token prevents hairlines from disappearing on press and eliminates double borders.
 """.trimIndent()
     ),
     ReleaseNote(
@@ -66,16 +80,6 @@ val STOA_RECENT_RELEASES = listOf(
 ### Markdown Changelogs & What's New
 - Update notes render clean headings, bullet points, and typography.
 - Added dedicated **What’s new in Stoa** view in Settings.
-""".trimIndent()
-    ),
-    ReleaseNote(
-        version = "v1.4.9",
-        isCurrent = false,
-        summary = "Per-Source Notification Channels & Publication Alerts",
-        markdownNotes = """
-### Per-Source Notification Channels
-- Channels grouped neatly under "Publications" in Android Settings.
-- Centralized alerts modal in Settings with bulk controls and deep links to system channels.
 """.trimIndent()
     )
 )

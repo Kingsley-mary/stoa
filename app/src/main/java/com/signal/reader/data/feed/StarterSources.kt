@@ -183,6 +183,13 @@ object StarterSources {
             siteUrl = "https://craigmod.com",
             feedUrl = "https://craigmod.com/index.xml"
         ),
+        StarterSource(
+            group = "Visual Art & Design",
+            name = "Identity Designed",
+            description = "Brand identities, visual systems and design studios",
+            siteUrl = "https://identitydesigned.com",
+            feedUrl = "https://identitydesigned.com/feed/"
+        ),
 
         // Science & Ideas
         StarterSource(

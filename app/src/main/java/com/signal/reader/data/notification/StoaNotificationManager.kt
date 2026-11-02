@@ -169,7 +169,7 @@ class StoaNotificationManager(private val context: Context) {
                 .setGroup(groupKey)
                 .setColor(0xFF141414.toInt())
 
-            val heroBitmap = if (!article.imageUrl.isNullOrBlank()) {
+            val heroBitmap = if (!article.imageUrl.isNullOrBlank() && article.imageUrl != "none") {
                 try {
                     val req = ImageRequest.Builder(context)
                         .data(article.imageUrl)

@@ -102,7 +102,7 @@ fun SourcePageScreen(
     var isRetrying by remember { mutableStateOf(false) }
 
     val heroArticle = remember(articles) {
-        articles.firstOrNull { !it.imageUrl.isNullOrBlank() } ?: articles.firstOrNull()
+        articles.firstOrNull { !it.imageUrl.isNullOrBlank() && it.imageUrl != "none" } ?: articles.firstOrNull()
     }
     val streamArticles = remember(articles, heroArticle) {
         if (heroArticle != null) articles.filter { it.id != heroArticle.id } else articles

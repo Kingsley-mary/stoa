@@ -579,7 +579,7 @@ fun SettingsScreen(
 
                         SettingsActionRow(
                             label = "What’s new in Stoa",
-                            sublabel = "Release notes for v1.4.11, v1.4.10 & v1.4.9",
+                            sublabel = "Release notes for v1.4.12, v1.4.11 & v1.4.10",
                             onClick = { showWhatsNewDialog = true }
                         )
 

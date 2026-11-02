@@ -159,7 +159,7 @@ class StoaWidgetProvider : AppWidgetProvider() {
 
                         // Load hero article image if article_image mode - unconstrained size preserves natural aspect ratio
                         var heroBitmap: Bitmap? = null
-                        if (effectiveBg == "article_image" && !heroArticle?.imageUrl.isNullOrBlank()) {
+                        if (effectiveBg == "article_image" && !heroArticle?.imageUrl.isNullOrBlank() && heroArticle.imageUrl != "none") {
                             try {
                                 val req = ImageRequest.Builder(context)
                                     .data(heroArticle.imageUrl)
