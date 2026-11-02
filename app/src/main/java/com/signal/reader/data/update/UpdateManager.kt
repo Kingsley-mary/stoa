@@ -2,6 +2,7 @@ package com.signal.reader.data.update
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
@@ -106,6 +107,8 @@ class UpdateManager(
                 // GitHub Releases JSON format
                 val tag = json.getString("tag_name").removePrefix("v").trim()
                 val body = json.optString("body", "Bug fixes and improvements")
+                val parsedCode = Regex("""(?:versionCode|code)[:=\s]+(\d+)""", RegexOption.IGNORE_CASE)
+                    .find(body)?.groupValues?.get(1)?.toIntOrNull() ?: 0
                 var downloadUrl = ""
                 val assets = json.optJSONArray("assets")
                 if (assets != null) {
@@ -118,7 +121,7 @@ class UpdateManager(
                         }
                     }
                 }
-                Quadruple(0, tag, downloadUrl, body)
+                Quadruple(parsedCode, tag, downloadUrl, body)
             } else {
                 // Custom / Stoa version.json format
                 val code = json.optInt("versionCode", 0)
@@ -236,6 +239,15 @@ class UpdateManager(
         try {
             if (!apkFile.exists()) {
                 _updateState.value = UpdateState.Error("APK file not found.")
+                return
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+                val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(settingsIntent)
                 return
             }
 

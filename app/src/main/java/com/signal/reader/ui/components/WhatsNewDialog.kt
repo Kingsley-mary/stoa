@@ -37,24 +37,35 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.10",
+        version = "v1.4.11",
         isCurrent = true,
-        summary = "Highlight Quote Share, Alerts Beside Mute & Button Tokens",
+        summary = "Publication Notification Icons, Quote Share & Button Tokens",
         markdownNotes = """
+### Publication Notification Icons
+- **Source Logos on Alerts**: Notifications automatically resolve and display the publication's high-resolution icon (`setLargeIcon`), with fallback monograms.
+- **Hero Image Integration**: Cover photos expand smoothly with `BigPictureStyle` on single article alerts.
+
 ### Text Selection Quote Share
-- **Floating Action Bar**: Highlighting text in any article now features **Share quote** alongside Copy and Select all.
-- **Instant Card Generator**: Directly launches Stoa's Quote Card Sheet pre-filled with your highlighted passage.
+- **Floating Action Bar**: Highlighting text in any article features **Share quote** alongside Copy and Select all, directly opening the Quote Card Sheet.
 
 ### Source Alerts Beside Mute
-- **Streamlined Placement**: Relocated notification toggle from header to a dedicated pill right beside the Mute button.
-- **Clear Active State**: Solid black pill when active; outline pill when muted.
+- **Streamlined Placement**: Dedicated alert toggle pill right beside the Mute button on source pages.
 
 ### Tactile Button Tokens
 - **Hairline Protection**: Unified design token prevents hairlines from disappearing on press and eliminates double borders.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.10",
+        isCurrent = false,
+        summary = "Highlight Quote Share, Alerts Beside Mute & Markdown Changelogs",
+        markdownNotes = """
+### Text Selection Quote Share
+- Highlighting text in any article now features **Share quote** in the floating action bar.
 
 ### Markdown Changelogs & What's New
-- **Rich Formatting**: Update notes render clean headings, bullet points, and typography instead of raw Markdown.
-- **Release History**: Dedicated **What’s new in Stoa** view in Settings.
+- Update notes render clean headings, bullet points, and typography.
+- Added dedicated **What’s new in Stoa** view in Settings.
 """.trimIndent()
     ),
     ReleaseNote(
@@ -63,25 +74,8 @@ val STOA_RECENT_RELEASES = listOf(
         summary = "Per-Source Notification Channels & Publication Alerts",
         markdownNotes = """
 ### Per-Source Notification Channels
-- **Android System Integration**: Channels grouped neatly under "Publications" in Android Settings.
-- **Publication Alerts Manager**: Centralized alerts modal in Settings with bulk controls and deep links to system channels.
-- **Silent Launch Checks**: Background update checks run silently without interrupting your reading.
-""".trimIndent()
-    ),
-    ReleaseNote(
-        version = "v1.4.8",
-        isCurrent = false,
-        summary = "Cover Image Engine, Android 16 Links & Earlier Read Pill",
-        markdownNotes = """
-### Cover Image Resolution Engine
-- **Creative Boom & High-Res CDN**: Upgraded asset resolvers for crystal-clear cover photos.
-- **YouTube Video Posters**: Automatic thumbnail extraction from embed iframes.
-
-### Android 16 Web Links
-- Removed `autoVerify` constraint so links from your followed publications open reliably in Stoa.
-
-### Earlier Read Floating Pill
-- Discreet bottom-right pill that auto-hides on scroll down and returns when pausing or scrolling up.
+- Channels grouped neatly under "Publications" in Android Settings.
+- Centralized alerts modal in Settings with bulk controls and deep links to system channels.
 """.trimIndent()
     )
 )
