@@ -490,6 +490,50 @@ fun SettingsScreen(
                                 } catch (_: Exception) {}
                             }
                         )
+
+                        SettingsActionRow(
+                            label = "Send test alert",
+                            sublabel = "Test publication alert sound, lockscreen & channel",
+                            onClick = {
+                                if (!notificationsGranted) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        try {
+                                            context.startActivity(notifManager.createAppNotificationSettingsIntent())
+                                        } catch (_: Exception) {}
+                                    }
+                                } else {
+                                    val dispatched = notifManager.postTestNotification()
+                                    Toast.makeText(
+                                        context,
+                                        if (dispatched) "Test publication alert dispatched" else "Could not post test alert",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        )
+
+                        SettingsActionRow(
+                            label = "Background sync & battery",
+                            sublabel = "Ensure Android does not sleep Stoa when closed",
+                            onClick = {
+                                try {
+                                    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    try {
+                                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                            data = Uri.parse("package:${context.packageName}")
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -579,7 +623,7 @@ fun SettingsScreen(
 
                         SettingsActionRow(
                             label = "What’s new in Stoa",
-                            sublabel = "Release notes for v1.4.12, v1.4.11 & v1.4.10",
+                            sublabel = "Release notes for v1.4.13, v1.4.12 & v1.4.11",
                             onClick = { showWhatsNewDialog = true }
                         )
 

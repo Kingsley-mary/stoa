@@ -109,6 +109,34 @@ class FeedParserTest {
     }
 
     @Test
+    fun testHypebeastCdataImageExtractionAndUrlClean() {
+        val sampleHypebeast = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+              <channel>
+                <title>Hypebeast</title>
+                <link>https://hypebeast.com</link>
+                <description>Fashion and Culture</description>
+                <item>
+                  <title>Porsche and La Marzocco</title>
+                  <description><![CDATA[<p><img width="620" src="https://image-cdn.hypb.st/https%3A%2F%2Fhypebeast.com%2Fimage%2Fporsche.jpg?w=800&amp;cbr=1&amp;q=90" /></p><p>Summary text here.</p>]]></description>
+                  <pubDate>Mon, 02 Nov 2026 01:33:18 +0000</pubDate>
+                  <link>https://hypebeast.com/2026/11/porsche</link>
+                  <guid>https://hypebeast.com/?post=6809303</guid>
+                  <content:encoded><![CDATA[<p><img width="620" src="https://image-cdn.hypb.st/https%3A%2F%2Fhypebeast.com%2Fimage%2Fporsche.jpg?w=800&amp;cbr=1&amp;q=90" /></p><p>Summary text here.</p>]]></content:encoded>
+                </item>
+              </channel>
+            </rss>
+        """.trimIndent()
+
+        val parsed = FeedParser.parse(sampleHypebeast, "https://hypebeast.com/feed")
+        assertEquals(1, parsed.items.size)
+        val item = parsed.items.first()
+        assertEquals("https://image-cdn.hypb.st/https%3A%2F%2Fhypebeast.com%2Fimage%2Fporsche.jpg?w=800&cbr=1&q=90", item.imageUrl)
+        assertFalse(item.imageUrl?.contains("&amp;") ?: true)
+    }
+
+    @Test
     fun testTimeFormattingAndReadingTime() {
         val now = System.currentTimeMillis()
         val tenMinsAgo = now - (10 * 60 * 1000)

@@ -261,6 +261,29 @@ class StoaNotificationManager(private val context: Context) {
         }
     }
 
+    fun postTestNotification(): Boolean {
+        if (!areNotificationsGloballyEnabled()) return false
+        val sampleSource = SourceEntity(
+            id = 99901L,
+            name = "Stoa Editorial",
+            siteUrl = "https://stoa.reader",
+            feedUrl = "https://stoa.reader/feed",
+            notificationsEnabled = true
+        )
+        val sampleArticle = ArticleEntity(
+            id = 99901L,
+            sourceId = 99901L,
+            sourceName = "Stoa Editorial",
+            guid = "test_alert_${System.currentTimeMillis()}",
+            title = "Dieter Rams & The Principles of Functional Form",
+            excerpt = "Publication alert test: sound, lock screen presentation, and editorial styling are delivering properly on this device.",
+            url = "https://stoa.reader",
+            publishedTime = System.currentTimeMillis()
+        )
+        postNewArticlesNotification(sampleSource, listOf(sampleArticle))
+        return true
+    }
+
     private fun getSourceIconBitmap(source: SourceEntity, targetSize: Int = 128): Bitmap {
         val domain = source.siteUrl
             .trim()

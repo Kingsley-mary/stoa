@@ -37,8 +37,29 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.12",
+        version = "v1.4.13",
         isCurrent = true,
+        summary = "Reliable In-App Installer, CDATA Image Engine & Notification Diagnostics",
+        markdownNotes = """
+### In-App Package Installer & Browser Fallback
+- **Reliable Package Installer**: Downloaded APKs are now stored in accessible app cache with explicit installer URI permissions, eliminating package installer denials on Android 12–15.
+- **Browser Download Fallback**: Added a direct browser download fallback to update prompts and error sheets, guaranteeing you can always install updates seamlessly.
+- **Never Left Wondering**: Error states now remain visible on screen with actionable diagnostics instead of silently closing.
+
+### Robust CDATA Image & HTML Entity Engine
+- **Full CDATA & Chunk Parsing**: Re-engineered XML pull parser's text extraction to gather multiple buffers and CDATA sections without skipping tags or dropping images (fixes Hypebeast, etc.).
+- **URL Entity Sanitization**: Automatically strips stray HTML entities (e.g. `&amp;`) from image URLs before passing to Coil.
+- **Continuous Cover Backfilling**: Every feed refresh continuously triggers background cover resolution for all articles missing artwork.
+
+### Publication Alert Diagnostics & Permission
+- **Runtime Notification Permission**: Added automatic runtime notification permission prompts on Android 13+ devices.
+- **Send Test Alert**: Dedicated diagnostic action in Settings > Notifications to immediately verify system channels, sounds, and lock screen presentation.
+- **Background Battery Optimization Shortcut**: One-tap access to Android's battery optimization settings to prevent background sync from being slept by OEM battery managers.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.12",
+        isCurrent = false,
         summary = "Cover Photo Engine, Slow Feed Protection & Canonical Feeds",
         markdownNotes = """
 ### Cover Photo Resolution Engine

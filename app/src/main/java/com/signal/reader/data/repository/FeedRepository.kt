@@ -234,9 +234,9 @@ class FeedRepository(
                     } catch (_: Exception) {
                     }
                 }
-                repoScope.launch {
-                    resolveMissingArticleImages(10)
-                }
+            }
+            repoScope.launch {
+                resolveMissingArticleImages(15)
             }
             newArticles.size
         } catch (e: Exception) {

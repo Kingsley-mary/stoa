@@ -19,12 +19,15 @@ class RefreshWorker(
 
     override suspend fun doWork(): Result {
         return try {
+            android.util.Log.d("StoaRefreshWorker", "Starting background feed refresh worker")
             val db = SignalDatabase.getInstance(applicationContext)
             val repository = FeedRepository(db)
-            repository.refreshAllFollowedSources()
+            val newCount = repository.refreshAllFollowedSources()
             repository.pruneOldUnsavedArticles()
+            android.util.Log.d("StoaRefreshWorker", "Completed background feed refresh: $newCount new articles")
             Result.success()
         } catch (e: Exception) {
+            android.util.Log.e("StoaRefreshWorker", "Background refresh failed: ${e.message}", e)
             Result.retry()
         }
     }

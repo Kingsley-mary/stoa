@@ -28,7 +28,7 @@ object ImageResolver {
      */
     fun resolveHighRes(rawUrl: String?): String? {
         if (rawUrl.isNullOrBlank()) return null
-        var url = rawUrl.trim()
+        var url = rawUrl.trim().replace("&amp;", "&").trim('"', '\'')
 
         // Ignore tracking pixels and data URIs
         if (url.startsWith("data:", ignoreCase = true) || isTrackingUrl(url)) {
@@ -82,7 +82,9 @@ object ImageResolver {
     fun selectBestMediaCandidate(candidates: List<MediaCandidate>): String? {
         if (candidates.isEmpty()) return null
 
-        val valid = candidates.filter { !isTrackingUrl(it.url) }
+        val valid = candidates
+            .map { it.copy(url = it.url.replace("&amp;", "&").trim('"', '\'')) }
+            .filter { !isTrackingUrl(it.url) }
         if (valid.isEmpty()) return null
 
         // Priority: non-thumbnail candidates with largest width > height > filesize
@@ -213,7 +215,7 @@ object ImageResolver {
         )
 
         for (attr in candidateAttrs) {
-            val value = el.attr(attr).trim()
+            val value = el.attr(attr).trim().replace("&amp;", "&").trim('"', '\'')
             if (value.isNotBlank() && !value.startsWith("data:") && !isTrackingUrl(value)) {
                 return value
             }
@@ -234,7 +236,7 @@ object ImageResolver {
             for (entry in entries) {
                 val parts = entry.trim().split(Regex("""\s+"""))
                 if (parts.isNotEmpty()) {
-                    val candidateUrl = parts[0]
+                    val candidateUrl = parts[0].replace("&amp;", "&").trim('"', '\'')
                     if (isTrackingUrl(candidateUrl)) continue
 
                     val descriptor = if (parts.size > 1) parts[1].lowercase(Locale.ROOT) else ""

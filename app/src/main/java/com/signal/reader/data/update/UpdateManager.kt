@@ -2,6 +2,7 @@ package com.signal.reader.data.update
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -32,10 +33,11 @@ sealed interface UpdateState {
     data class Downloading(
         val progressPercent: Int,
         val downloadedBytes: Long,
-        val totalBytes: Long
+        val totalBytes: Long,
+        val apkUrl: String = ""
     ) : UpdateState
-    data class ReadyToInstall(val apkFile: File) : UpdateState
-    data class Error(val message: String) : UpdateState
+    data class ReadyToInstall(val apkFile: File, val apkUrl: String = "") : UpdateState
+    data class Error(val message: String, val apkUrl: String = "") : UpdateState
 }
 
 class UpdateManager(
@@ -173,7 +175,7 @@ class UpdateManager(
 
     suspend fun downloadAndInstall(available: UpdateState.Available) = withContext(Dispatchers.IO) {
         try {
-            _updateState.value = UpdateState.Downloading(0, 0, 0)
+            _updateState.value = UpdateState.Downloading(0, 0, 0, available.apkUrl)
 
             val request = Request.Builder()
                 .url(available.apkUrl)
@@ -182,16 +184,26 @@ class UpdateManager(
 
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
-                _updateState.value = UpdateState.Error("Download failed with HTTP ${response.code}")
+                _updateState.value = UpdateState.Error("Download failed with HTTP ${response.code}", available.apkUrl)
                 return@withContext
             }
 
             val body = response.body ?: throw IllegalStateException("Download body was null")
             val totalBytes = body.contentLength()
 
-            val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
+            // Prefer external cache directory so Android PackageInstaller can access the FileProvider content URI without sandbox permission denials
+            val updatesDir = File(context.externalCacheDir ?: context.cacheDir, "updates").apply { mkdirs() }
             val cleanVersionName = available.versionName.replace(Regex("[^a-zA-Z0-9.-]"), "_")
             val targetApk = File(updatesDir, "stoa-update-$cleanVersionName.apk")
+
+            // Clean up any stale partial downloads or older versions
+            try {
+                updatesDir.listFiles()?.forEach { file ->
+                    if (file.name != targetApk.name && file.isFile) {
+                        file.delete()
+                    }
+                }
+            } catch (_: Exception) {}
 
             body.byteStream().use { input ->
                 FileOutputStream(targetApk).use { output ->
@@ -215,7 +227,8 @@ class UpdateManager(
                             _updateState.value = UpdateState.Downloading(
                                 progressPercent = percent,
                                 downloadedBytes = totalDownloaded,
-                                totalBytes = totalBytes
+                                totalBytes = totalBytes,
+                                apkUrl = available.apkUrl
                             )
                         }
                     }
@@ -223,31 +236,39 @@ class UpdateManager(
                 }
             }
 
-            _updateState.value = UpdateState.ReadyToInstall(targetApk)
+            _updateState.value = UpdateState.ReadyToInstall(targetApk, available.apkUrl)
             withContext(Dispatchers.Main) {
-                installApk(context, targetApk)
+                installApk(context, targetApk, available.apkUrl)
             }
         } catch (e: CancellationException) {
             _updateState.value = UpdateState.Idle
             throw e
         } catch (e: Exception) {
-            _updateState.value = UpdateState.Error(e.localizedMessage ?: "Download failed.")
+            _updateState.value = UpdateState.Error(e.localizedMessage ?: "Download failed.", available.apkUrl)
         }
     }
 
-    fun installApk(context: Context, apkFile: File) {
+    fun installApk(context: Context, apkFile: File, apkUrl: String = "") {
         try {
             if (!apkFile.exists()) {
-                _updateState.value = UpdateState.Error("APK file not found.")
+                _updateState.value = UpdateState.Error("APK file not found.", apkUrl)
                 return
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-                val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                _updateState.value = UpdateState.ReadyToInstall(apkFile, apkUrl)
+                try {
+                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(settingsIntent)
+                } catch (_: Exception) {
+                    val fallbackIntent = Intent(Settings.ACTION_SECURITY_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(fallbackIntent)
                 }
-                context.startActivity(settingsIntent)
                 return
             }
 
@@ -263,9 +284,16 @@ class UpdateManager(
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
+            // Explicitly grant read URI permission to all potential installer packages
+            val resInfoList = context.packageManager.queryIntentActivities(installIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            for (resolveInfo in resInfoList) {
+                context.grantUriPermission(resolveInfo.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            _updateState.value = UpdateState.ReadyToInstall(apkFile, apkUrl)
             context.startActivity(installIntent)
         } catch (e: Exception) {
-            _updateState.value = UpdateState.Error("Couldn't start package installer: ${e.localizedMessage}")
+            _updateState.value = UpdateState.Error("Couldn't start package installer: ${e.localizedMessage}", apkUrl)
         }
     }
 

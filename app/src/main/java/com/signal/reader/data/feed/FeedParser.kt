@@ -339,12 +339,22 @@ object FeedParser {
     }
 
     private fun readText(parser: XmlPullParser): String {
-        var result = ""
-        if (parser.next() == XmlPullParser.TEXT) {
-            result = parser.text ?: ""
-            parser.nextTag()
+        val sb = StringBuilder()
+        var depth = 1
+        while (depth > 0) {
+            val event = parser.next()
+            when (event) {
+                XmlPullParser.START_TAG -> depth++
+                XmlPullParser.END_TAG -> depth--
+                XmlPullParser.TEXT, XmlPullParser.CDSECT -> {
+                    if (depth >= 1) {
+                        sb.append(parser.text.orEmpty())
+                    }
+                }
+                XmlPullParser.END_DOCUMENT -> break
+            }
         }
-        return result
+        return sb.toString().trim()
     }
 
     private fun isImageUrl(url: String): Boolean {

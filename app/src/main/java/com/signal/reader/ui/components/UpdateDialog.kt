@@ -1,5 +1,7 @@
 package com.signal.reader.ui.components
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -59,7 +61,8 @@ fun UpdateDialog(
 
     val isVisible = updateState is UpdateState.Available ||
             updateState is UpdateState.Downloading ||
-            updateState is UpdateState.ReadyToInstall
+            updateState is UpdateState.ReadyToInstall ||
+            updateState is UpdateState.Error
 
     if (!isVisible) return
 
@@ -172,6 +175,35 @@ fun UpdateDialog(
                                 )
                             }
                         }
+
+                        if (updateState.apkUrl.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .signalTactileClick(
+                                        targetScale = 0.98f,
+                                        onClick = {
+                                            try {
+                                                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(updateState.apkUrl)).apply {
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(browserIntent)
+                                                onDismiss()
+                                            } catch (_: Exception) {}
+                                        }
+                                    )
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Or download direct APK in browser",
+                                    color = colors.mute,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
                     }
 
                     is UpdateState.Downloading -> {
@@ -228,32 +260,67 @@ fun UpdateDialog(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(CircleShape)
-                                .background(colors.ink)
-                                .signalTactileClick(
-                                    targetScale = SignalTactile.ButtonPressScale,
-                                    onClick = {
-                                        updateManager.installApk(context, updateState.apkFile)
-                                    }
-                                )
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(
-                                text = "Install now",
-                                color = colors.bg,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(CircleShape)
+                                    .background(colors.ink)
+                                    .signalTactileClick(
+                                        targetScale = SignalTactile.ButtonPressScale,
+                                        onClick = {
+                                            updateManager.installApk(context, updateState.apkFile, updateState.apkUrl)
+                                        }
+                                    )
+                                    .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Install now",
+                                    color = colors.bg,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            if (updateState.apkUrl.isNotBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(CircleShape)
+                                        .border(1.dp, colors.line, CircleShape)
+                                        .signalTactileClick(
+                                            targetScale = SignalTactile.ButtonPressScale,
+                                            onClick = {
+                                                try {
+                                                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(updateState.apkUrl)).apply {
+                                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    }
+                                                    context.startActivity(browserIntent)
+                                                    onDismiss()
+                                                } catch (_: Exception) {}
+                                            }
+                                        )
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Download via browser instead",
+                                        color = colors.ink,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
                         }
                     }
 
                     is UpdateState.Error -> {
                         Text(
-                            text = "Update Check",
+                            text = "Update Notice",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.ink,
@@ -270,24 +337,59 @@ fun UpdateDialog(
 
                         Spacer(modifier = Modifier.height(18.dp))
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(CircleShape)
-                                .border(1.dp, colors.line, CircleShape)
-                                .signalTactileClick(
-                                    targetScale = SignalTactile.ButtonPressScale,
-                                    onClick = onDismiss
-                                )
-                                .padding(vertical = 11.dp),
-                            contentAlignment = Alignment.Center
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(
-                                text = "Dismiss",
-                                color = colors.ink,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+                            if (updateState.apkUrl.isNotBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(CircleShape)
+                                        .background(colors.ink)
+                                        .signalTactileClick(
+                                            targetScale = SignalTactile.ButtonPressScale,
+                                            onClick = {
+                                                try {
+                                                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(updateState.apkUrl)).apply {
+                                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    }
+                                                    context.startActivity(browserIntent)
+                                                    onDismiss()
+                                                } catch (_: Exception) {}
+                                            }
+                                        )
+                                        .padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Download via browser",
+                                        color = colors.bg,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(CircleShape)
+                                    .border(1.dp, colors.line, CircleShape)
+                                    .signalTactileClick(
+                                        targetScale = SignalTactile.ButtonPressScale,
+                                        onClick = onDismiss
+                                    )
+                                    .padding(vertical = 11.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Dismiss",
+                                    color = colors.ink,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
 
