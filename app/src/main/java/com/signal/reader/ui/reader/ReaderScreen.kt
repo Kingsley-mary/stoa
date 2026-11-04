@@ -1125,6 +1125,13 @@ private sealed class ContentBlock {
         val postUrl: String,
         val mediaUrl: String? = null
     ) : ContentBlock()
+    data class SpotifyEmbed(
+        val url: String,
+        val embedType: String = "Track",
+        val title: String? = null,
+        val artist: String? = null,
+        val imageUrl: String? = null
+    ) : ContentBlock()
     data class Quote(val text: String) : ContentBlock()
     data class BulletList(val items: List<String>, val htmlItems: List<String> = items) : ContentBlock()
 }
@@ -1139,11 +1146,43 @@ private fun extractVimeoVideoId(url: String): String? {
     return regex.find(url)?.groupValues?.get(1)
 }
 
+private fun extractSpotifyEmbed(url: String, fallbackTitle: String? = null): ContentBlock.SpotifyEmbed? {
+    if (!url.contains("spotify.com")) return null
+    val clean = url.trim()
+    val type = when {
+        clean.contains("/track/") -> "Track"
+        clean.contains("/album/") -> "Album"
+        clean.contains("/playlist/") -> "Playlist"
+        clean.contains("/episode/") -> "Podcast Episode"
+        clean.contains("/show/") -> "Podcast"
+        else -> "Audio"
+    }
+    val normalized = if (clean.contains("/embed/")) {
+        clean.replace("/embed/", "/")
+    } else {
+        clean
+    }.substringBefore("?")
+
+    return ContentBlock.SpotifyEmbed(
+        url = normalized,
+        embedType = type,
+        title = fallbackTitle?.takeIf { it != clean && it.isNotBlank() }
+    )
+}
+
 private fun extractSocialEmbedFromBlockquote(el: org.jsoup.nodes.Element): ContentBlock.SocialEmbed? {
     val classes = el.classNames().map { it.lowercase(Locale.ROOT) }
     val allText = el.text().trim()
     val links = el.select("a[href]")
     val lastLink = links.lastOrNull()?.attr("href")?.trim().orEmpty()
+
+    // Extract any embedded thumbnail / photo preview inside blockquote or immediate parent
+    val embeddedMediaUrl = el.select("img").mapNotNull {
+        ImageResolver.extractBestImageUrlFromElement(it) ?: it.attr("src").ifBlank { it.attr("data-src") }
+    }.firstOrNull { it.isNotBlank() && !it.startsWith("data:") && !ImageResolver.isTrackingUrl(it) }
+        ?: el.parent()?.select("img")?.mapNotNull {
+            ImageResolver.extractBestImageUrlFromElement(it) ?: it.attr("src").ifBlank { it.attr("data-src") }
+        }?.firstOrNull { it.isNotBlank() && !it.startsWith("data:") && !ImageResolver.isTrackingUrl(it) }
 
     // 1. Twitter / X embed: class contains "twitter-tweet" or link contains twitter.com/x.com
     val twitterLink = links.firstOrNull { it.attr("href").contains("twitter.com") || it.attr("href").contains("x.com") }?.attr("href")?.trim()
@@ -1159,7 +1198,8 @@ private fun extractSocialEmbedFromBlockquote(el: org.jsoup.nodes.Element): Conte
             author = authorName,
             handle = authorHandle,
             text = cleanText.ifBlank { allText },
-            postUrl = postUrl
+            postUrl = postUrl,
+            mediaUrl = embeddedMediaUrl
         )
     }
 
@@ -1167,12 +1207,17 @@ private fun extractSocialEmbedFromBlockquote(el: org.jsoup.nodes.Element): Conte
     val igLink = links.firstOrNull { it.attr("href").contains("instagram.com") }?.attr("href")?.trim()
     if (classes.any { it.contains("instagram") } || !igLink.isNullOrBlank()) {
         val postUrl = igLink ?: lastLink
+        val igAuthor = el.select("a").firstOrNull {
+            val h = it.attr("href")
+            h.contains("instagram.com") && !h.contains("/p/") && !h.contains("/reel/")
+        }?.text()?.trim()?.removePrefix("@")?.let { "@$it" }
         return ContentBlock.SocialEmbed(
             platform = SocialPlatform.INSTAGRAM,
-            author = "Instagram",
-            handle = null,
+            author = igAuthor ?: "Instagram",
+            handle = igAuthor,
             text = el.select("p").firstOrNull()?.text()?.trim() ?: allText.take(180),
-            postUrl = postUrl
+            postUrl = postUrl,
+            mediaUrl = embeddedMediaUrl
         )
     }
 
@@ -1186,7 +1231,8 @@ private fun extractSocialEmbedFromBlockquote(el: org.jsoup.nodes.Element): Conte
             author = "Bluesky",
             handle = null,
             text = pText,
-            postUrl = postUrl
+            postUrl = postUrl,
+            mediaUrl = embeddedMediaUrl
         )
     }
 
@@ -1199,7 +1245,8 @@ private fun extractSocialEmbedFromBlockquote(el: org.jsoup.nodes.Element): Conte
             author = "Threads",
             handle = null,
             text = el.select("p").text().trim().ifBlank { allText },
-            postUrl = postUrl
+            postUrl = postUrl,
+            mediaUrl = embeddedMediaUrl
         )
     }
 
@@ -1212,7 +1259,8 @@ private fun extractSocialEmbedFromBlockquote(el: org.jsoup.nodes.Element): Conte
             author = "TikTok",
             handle = null,
             text = el.select("p").text().trim().ifBlank { allText },
-            postUrl = postUrl
+            postUrl = postUrl,
+            mediaUrl = embeddedMediaUrl
         )
     }
 
@@ -1225,7 +1273,8 @@ private fun extractSocialEmbedFromBlockquote(el: org.jsoup.nodes.Element): Conte
             author = "Reddit",
             handle = null,
             text = allText,
-            postUrl = postUrl
+            postUrl = postUrl,
+            mediaUrl = embeddedMediaUrl
         )
     }
 
@@ -1342,41 +1391,47 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
             el.tagName().equals("iframe", ignoreCase = true) -> {
                 val src = el.attr("src").ifBlank { el.attr("data-src") }.trim()
                 val title = el.attr("title").trim().ifBlank { null }
-                val ytId = extractYouTubeVideoId(src)
-                if (ytId != null) {
-                    blocks.add(
-                        ContentBlock.Video(
-                            videoUrl = "https://www.youtube.com/watch?v=$ytId",
-                            posterUrl = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
-                            title = title,
-                            provider = VideoProvider.YOUTUBE,
-                            videoId = ytId
-                        )
-                    )
+                val spotifyBlock = extractSpotifyEmbed(src, title)
+                if (spotifyBlock != null) {
+                    blocks.add(spotifyBlock)
                     processedElements.add(el)
                 } else {
-                    val vimeoId = extractVimeoVideoId(src)
-                    if (vimeoId != null) {
+                    val ytId = extractYouTubeVideoId(src)
+                    if (ytId != null) {
                         blocks.add(
                             ContentBlock.Video(
-                                videoUrl = "https://vimeo.com/$vimeoId",
-                                posterUrl = null,
+                                videoUrl = "https://www.youtube.com/watch?v=$ytId",
+                                posterUrl = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
                                 title = title,
-                                provider = VideoProvider.VIMEO,
-                                videoId = vimeoId
+                                provider = VideoProvider.YOUTUBE,
+                                videoId = ytId
                             )
                         )
                         processedElements.add(el)
-                    } else if (src.isNotBlank() && (src.contains("embed") || src.contains("video") || src.contains("player"))) {
-                        blocks.add(
-                            ContentBlock.Video(
-                                videoUrl = src,
-                                posterUrl = null,
-                                title = title,
-                                provider = VideoProvider.GENERIC
+                    } else {
+                        val vimeoId = extractVimeoVideoId(src)
+                        if (vimeoId != null) {
+                            blocks.add(
+                                ContentBlock.Video(
+                                    videoUrl = "https://vimeo.com/$vimeoId",
+                                    posterUrl = null,
+                                    title = title,
+                                    provider = VideoProvider.VIMEO,
+                                    videoId = vimeoId
+                                )
                             )
-                        )
-                        processedElements.add(el)
+                            processedElements.add(el)
+                        } else if (src.isNotBlank() && (src.contains("embed") || src.contains("video") || src.contains("player"))) {
+                            blocks.add(
+                                ContentBlock.Video(
+                                    videoUrl = src,
+                                    posterUrl = null,
+                                    title = title,
+                                    provider = VideoProvider.GENERIC
+                                )
+                            )
+                            processedElements.add(el)
+                        }
                     }
                 }
             }
@@ -1403,38 +1458,43 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                 if (iframe != null) {
                     val src = iframe.attr("src").ifBlank { iframe.attr("data-src") }.trim()
                     val title = iframe.attr("title").trim().ifBlank { null }
-                    val ytId = extractYouTubeVideoId(src)
-                    if (ytId != null) {
-                        blocks.add(
-                            ContentBlock.Video(
-                                videoUrl = "https://www.youtube.com/watch?v=$ytId",
-                                posterUrl = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
-                                title = title,
-                                provider = VideoProvider.YOUTUBE,
-                                videoId = ytId
-                            )
-                        )
+                    val spotifyBlock = extractSpotifyEmbed(src, title)
+                    if (spotifyBlock != null) {
+                        blocks.add(spotifyBlock)
                     } else {
-                        val vimeoId = extractVimeoVideoId(src)
-                        if (vimeoId != null) {
+                        val ytId = extractYouTubeVideoId(src)
+                        if (ytId != null) {
                             blocks.add(
                                 ContentBlock.Video(
-                                    videoUrl = "https://vimeo.com/$vimeoId",
-                                    posterUrl = null,
+                                    videoUrl = "https://www.youtube.com/watch?v=$ytId",
+                                    posterUrl = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
                                     title = title,
-                                    provider = VideoProvider.VIMEO,
-                                    videoId = vimeoId
+                                    provider = VideoProvider.YOUTUBE,
+                                    videoId = ytId
                                 )
                             )
-                        } else if (src.isNotBlank() && (src.contains("embed") || src.contains("video") || src.contains("player"))) {
-                            blocks.add(
-                                ContentBlock.Video(
-                                    videoUrl = src,
-                                    posterUrl = null,
-                                    title = title,
-                                    provider = VideoProvider.GENERIC
+                        } else {
+                            val vimeoId = extractVimeoVideoId(src)
+                            if (vimeoId != null) {
+                                blocks.add(
+                                    ContentBlock.Video(
+                                        videoUrl = "https://vimeo.com/$vimeoId",
+                                        posterUrl = null,
+                                        title = title,
+                                        provider = VideoProvider.VIMEO,
+                                        videoId = vimeoId
+                                    )
                                 )
-                            )
+                            } else if (src.isNotBlank() && (src.contains("embed") || src.contains("video") || src.contains("player"))) {
+                                blocks.add(
+                                    ContentBlock.Video(
+                                        videoUrl = src,
+                                        posterUrl = null,
+                                        title = title,
+                                        provider = VideoProvider.GENERIC
+                                    )
+                                )
+                            }
                         }
                     }
                 } else if (video != null) {
@@ -1471,31 +1531,37 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                 if (iframe != null) {
                     val src = iframe.attr("src").ifBlank { iframe.attr("data-src") }.trim()
                     val title = iframe.attr("title").trim().ifBlank { null }
-                    val ytId = extractYouTubeVideoId(src)
-                    if (ytId != null) {
-                        blocks.add(
-                            ContentBlock.Video(
-                                videoUrl = "https://www.youtube.com/watch?v=$ytId",
-                                posterUrl = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
-                                title = title,
-                                provider = VideoProvider.YOUTUBE,
-                                videoId = ytId
-                            )
-                        )
+                    val spotifyBlock = extractSpotifyEmbed(src, title)
+                    if (spotifyBlock != null) {
+                        blocks.add(spotifyBlock)
                         processedElements.addAll(el.getAllElements())
                     } else {
-                        val vimeoId = extractVimeoVideoId(src)
-                        if (vimeoId != null) {
+                        val ytId = extractYouTubeVideoId(src)
+                        if (ytId != null) {
                             blocks.add(
                                 ContentBlock.Video(
-                                    videoUrl = "https://vimeo.com/$vimeoId",
-                                    posterUrl = null,
+                                    videoUrl = "https://www.youtube.com/watch?v=$ytId",
+                                    posterUrl = "https://img.youtube.com/vi/$ytId/hqdefault.jpg",
                                     title = title,
-                                    provider = VideoProvider.VIMEO,
-                                    videoId = vimeoId
+                                    provider = VideoProvider.YOUTUBE,
+                                    videoId = ytId
                                 )
                             )
                             processedElements.addAll(el.getAllElements())
+                        } else {
+                            val vimeoId = extractVimeoVideoId(src)
+                            if (vimeoId != null) {
+                                blocks.add(
+                                    ContentBlock.Video(
+                                        videoUrl = "https://vimeo.com/$vimeoId",
+                                        posterUrl = null,
+                                        title = title,
+                                        provider = VideoProvider.VIMEO,
+                                        videoId = vimeoId
+                                    )
+                                )
+                                processedElements.addAll(el.getAllElements())
+                            }
                         }
                     }
                 } else if (video != null) {
@@ -1537,11 +1603,22 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                     processedElements.addAll(el.getAllElements())
                 } else {
                     val text = el.text().trim()
-                    val socialLinkEmbed = if (href.isNotBlank() && (text.length < 120 || text == href || href.contains("/status/") || href.contains("/p/"))) {
-                        extractSocialEmbedFromLink(href, text)
-                    } else null
+                    val aText = aTag?.text()?.trim().orEmpty()
+                    // A paragraph is only an embed if it consists solely of the standalone link without surrounding narrative prose
+                    val isStandaloneLink = aTag != null && href.isNotBlank() && (
+                        text.isEmpty() ||
+                        text == href ||
+                        text.equals(aText, ignoreCase = true) ||
+                        (text.length < 90 && (text.startsWith("http://") || text.startsWith("https://") || text.startsWith("View on") || text.startsWith("Listen on") || text.startsWith("Watch on")))
+                    )
 
-                    if (socialLinkEmbed != null) {
+                    val spotifyEmbed = if (isStandaloneLink) extractSpotifyEmbed(href, aText) else null
+                    val socialLinkEmbed = if (isStandaloneLink && spotifyEmbed == null) extractSocialEmbedFromLink(href, aText) else null
+
+                    if (spotifyEmbed != null) {
+                        blocks.add(spotifyEmbed)
+                        processedElements.addAll(el.getAllElements())
+                    } else if (socialLinkEmbed != null) {
                         blocks.add(socialLinkEmbed)
                         processedElements.addAll(el.getAllElements())
                     } else {
@@ -1780,6 +1857,9 @@ private fun RenderContentBlock(
         is ContentBlock.SocialEmbed -> {
             SocialEmbedCard(block = block)
         }
+        is ContentBlock.SpotifyEmbed -> {
+            SpotifyEmbedCard(block = block)
+        }
         is ContentBlock.BulletList -> {
             Column(
                 modifier = Modifier
@@ -1945,6 +2025,168 @@ private fun SocialEmbedCard(
             fontWeight = FontWeight.Medium,
             color = colors.mute
         )
+    }
+}
+
+private val spotifyOEmbedCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String?>>()
+
+@Composable
+private fun SpotifyEmbedCard(
+    block: ContentBlock.SpotifyEmbed,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val colors = SignalTheme.colors
+    val haptics = rememberSignalHaptics()
+
+    var trackTitle by remember(block.url) {
+        mutableStateOf(spotifyOEmbedCache[block.url]?.first ?: block.title ?: "Spotify ${block.embedType}")
+    }
+    var artworkUrl by remember(block.url) {
+        mutableStateOf(spotifyOEmbedCache[block.url]?.second ?: block.imageUrl)
+    }
+
+    LaunchedEffect(block.url) {
+        if (!spotifyOEmbedCache.containsKey(block.url)) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val client = okhttp3.OkHttpClient.Builder()
+                        .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                        .build()
+                    val req = okhttp3.Request.Builder()
+                        .url("https://open.spotify.com/oembed?url=" + java.net.URLEncoder.encode(block.url, "UTF-8"))
+                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+                        .build()
+                    val res = client.newCall(req).execute()
+                    if (res.isSuccessful) {
+                        val body = res.body?.string()
+                        if (!body.isNullOrBlank()) {
+                            val json = org.json.JSONObject(body)
+                            val t = json.optString("title").ifBlank { null }
+                            val img = json.optString("thumbnail_url").ifBlank { null }
+                            if (t != null || img != null) {
+                                val resolvedTitle = t ?: ("Spotify " + block.embedType)
+                                spotifyOEmbedCache[block.url] = Pair(resolvedTitle, img)
+                                withContext(Dispatchers.Main) {
+                                    trackTitle = resolvedTitle
+                                    if (img != null) artworkUrl = img
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(colors.card)
+            .border(1.dp, colors.line, RoundedCornerShape(18.dp))
+            .signalTactileClick(
+                targetScale = SignalTactile.ButtonPressScale,
+                onClick = {
+                    haptics.pop()
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(block.url)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            )
+            .padding(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Album art thumbnail or Spotify music note placeholder
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.bg)
+                    .border(0.5.dp, colors.line, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!artworkUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(artworkUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "Spotify cover art",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = "♫",
+                        fontSize = 24.sp,
+                        color = Color(0xFF1DB954)
+                    )
+                }
+            }
+
+            // Middle info: badge + title + action
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Spotify brand badge
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF1DB954))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "SPOTIFY",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+
+                    Text(
+                        text = block.embedType.uppercase(Locale.ROOT),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.mute,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+
+                Text(
+                    text = trackTitle,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.ink,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 19.sp
+                )
+
+                Text(
+                    text = "Play on Spotify ↗",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.accent
+                )
+            }
+        }
     }
 }
 

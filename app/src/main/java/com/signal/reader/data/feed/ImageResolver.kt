@@ -16,8 +16,8 @@ object ImageResolver {
 
     private val trackingKeywords = listOf(
         "1x1", "pixel", "tracker", "beacon", "stat.gif", "analytics",
-        "feedburner", "avatar", "icon", "badge", "emoji", "logo", "site-logo",
-        "placeholder", "spacer", "blank.gif", "transparent.gif"
+        "feedburner", "avatar", "badge", "emoji", "site-logo", "brand-logo",
+        "header-logo", "footer-logo", "placeholder", "spacer", "blank.gif", "transparent.gif"
     )
 
     private val wpThumbnailRegex = Regex("""-\d{2,4}x\d{2,4}(\.[a-zA-Z]{3,4}(?:\?.*)?)$""", RegexOption.IGNORE_CASE)
@@ -317,7 +317,14 @@ object ImageResolver {
 
     fun isTrackingUrl(url: String): Boolean {
         val lower = url.lowercase(Locale.ROOT)
+        // Explicitly allow clean artwork that indicates absence of watermark logos (e.g. Polygon key art ending in -no-logo.jpg)
+        if (lower.contains("no-logo") || lower.contains("nologo")) return false
         if (lower.endsWith(".svg") || lower.contains(".svg?") || lower.contains("/svg/")) return true
-        return trackingKeywords.any { lower.contains(it) }
+        if (trackingKeywords.any { lower.contains(it) }) return true
+        // Standalone logos or icons (e.g. /logo.png, _logo.jpg, /icon.png, favicon) without false-positive matching on words like iconic or monologue
+        if (Regex("""(?:^|[/_-])(?:site-?logo|brand-?logo|favicon|apple-touch-icon)(?:[/._-]|\.[a-z]{3,4})""").containsMatchIn(lower)) return true
+        if (Regex("""(?:^|[/_])logo\.(?:png|jpe?g|gif|webp)""").containsMatchIn(lower)) return true
+        if (Regex("""(?:^|[/_])icon\.(?:png|jpe?g|gif|webp)""").containsMatchIn(lower)) return true
+        return false
     }
 }

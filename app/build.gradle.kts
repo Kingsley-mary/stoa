@@ -13,8 +13,8 @@ android {
         applicationId = "com.signal.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "1.4.16"
+        versionCode = 22
+        versionName = "1.4.17"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -77,7 +77,21 @@ object ReadabilityExtractor {
                 }
             }
 
-            // 3. Promote lazy loaded image attributes (data-src, data-img-url, data-orig-file, srcset) to primary src
+            // 3. Promote picture tags and lazy loaded image attributes (data-src, data-img-url, data-orig-file, srcset) to primary src
+            doc.select("picture").forEach { picture ->
+                val bestSrcset = picture.select("source[srcset]").mapNotNull {
+                    ImageResolver.extractHighestResFromSrcset(it.attr("srcset"))
+                }.firstOrNull()
+                if (!bestSrcset.isNullOrBlank()) {
+                    val img = picture.selectFirst("img")
+                    if (img != null) {
+                        img.attr("src", bestSrcset)
+                    } else {
+                        picture.append("<img src=\"$bestSrcset\" alt=\"Article Image\" />")
+                    }
+                }
+            }
+
             doc.select("img").forEach { img ->
                 val bestUrl = ImageResolver.extractBestImageUrlFromElement(img)
                 if (!bestUrl.isNullOrBlank()) {
@@ -87,19 +101,20 @@ object ReadabilityExtractor {
 
             // 4. Capture lead hero cover image before stripping header/clutter
             val leadOgImage = ImageResolver.extractOpenGraphImage(doc)
-            val leadFeatureEl = doc.selectFirst("figure[data-is-feature-img='true'], .article-header figure, header figure, [data-is-feature-img]")
+            val leadFeatureEl = doc.selectFirst("figure[data-is-feature-img='true'], .article-header figure, header figure, [data-is-feature-img], .c-entry-hero, [data-hero-image], .lead-img, figure.wp-block-image")
             val leadFeatureImg = leadFeatureEl?.selectFirst("img")?.let { ImageResolver.extractBestImageUrlFromElement(it) }
             val bgHeaderMatch = Regex("""background-image:\s*url\(['"]?([^'"\)]+)['"]?\)""", RegexOption.IGNORE_CASE)
                 .find(doc.select("header[style*=background-image], div[style*=background-image]").attr("style"))
             val bgHeaderUrl = bgHeaderMatch?.groupValues?.get(1)?.let { ImageResolver.cleanUrl(it) }?.takeIf { !ImageResolver.isTrackingUrl(it) }
             val effectiveLeadCover = leadFeatureImg ?: leadOgImage ?: bgHeaderUrl
 
-            // 5. Strip non-content iframes, keeping YouTube, Vimeo, Twitch, and social embeds (Twitter, Instagram, Bluesky, TikTok)
+            // 5. Strip non-content iframes, keeping YouTube, Vimeo, Twitch, Spotify, and social embeds (Twitter, Instagram, Bluesky, TikTok)
             doc.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src").lowercase()
                 val isSocialOrVideo = src.contains("youtube") || src.contains("youtu.be") ||
                               src.contains("vimeo") || src.contains("player.vimeo") ||
                               src.contains("twitch") || src.contains("embed") ||
+                              src.contains("spotify") ||
                               src.contains("twitter") || src.contains("x.com") ||
                               src.contains("instagram") || src.contains("tiktok") ||
                               src.contains("reddit") || src.contains("bluesky") ||

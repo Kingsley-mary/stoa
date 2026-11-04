@@ -314,4 +314,19 @@ class FeedParserTest {
         assertFalse(cleaned.contains("&#x"))
         assertFalse(cleaned.contains("&amp;"))
     }
+
+    @Test
+    fun testTrackingUrlPolygonNoLogoPreserved() {
+        val polygonKeyArt = "https://static0.polygonimages.com/wordpress/wp-content/uploads/2026/10/warhammer-survivors-key-art-3840x2160-no-logo.jpg"
+        assertFalse("Polygon key art ending in -no-logo.jpg should NOT be treated as tracking pixel", ImageResolver.isTrackingUrl(polygonKeyArt))
+
+        val siteLogo = "https://example.com/assets/site-logo.png"
+        assertTrue("site-logo.png should be treated as tracking / logo", ImageResolver.isTrackingUrl(siteLogo))
+
+        val pureLogo = "https://example.com/images/logo.png"
+        assertTrue("logo.png should be treated as tracking / logo", ImageResolver.isTrackingUrl(pureLogo))
+
+        val iconicScene = "https://example.com/wp-content/uploads/2026/10/iconic-thriller-scene.jpg"
+        assertFalse("Words containing substring 'icon' like iconic must NOT be discarded", ImageResolver.isTrackingUrl(iconicScene))
+    }
 }

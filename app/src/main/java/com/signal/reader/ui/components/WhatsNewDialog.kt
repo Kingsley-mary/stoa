@@ -37,8 +37,26 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.16",
+        version = "v1.4.17",
         isCurrent = true,
+        summary = "Polygon & Hypebeast Image Fixes, Spotify & Instagram Embeds, Link Separation, and Settings Markdown",
+        markdownNotes = """
+### Polygon & Hypebeast Visual Media
+- **Polygon Key Art & Hero Covers**: Fixed tracking URL filter that was blacklisting clean artwork filenames ending in `-no-logo.jpg`. Promoted picture element sources and lead feature headers.
+- **Hypebeast Image Loading**: Removed custom user-agent suffix from Coil's image loader to prevent CloudFront and Fastly CDN 403 Forbidden blocks.
+
+### Rich Media Embeds & Social Integration
+- **Native Spotify Player Cards**: Added Swiss-style Spotify cards for tracks, albums, playlists, and podcast episodes featuring high-resolution cover art, track titles, and a tactile "Play on Spotify ↗" button.
+- **Instagram Preview Photos**: Preserved and rendered embedded image previews from Instagram, Twitter, and Bluesky embeds.
+- **Paragraph Link Preservation**: Cleanly separated inline hyperlinks within editorial paragraphs from standalone embeds. Normal prose sentences with links are no longer wrapped into embed cards.
+
+### Settings & Polish
+- **Rich Markdown in Settings**: Fixed update changelog rendering beneath "Check now" in Settings to use full Markdown typography (headers, bold, bullet points).
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.16",
+        isCurrent = false,
         summary = "Creative Boom Deduplication, In-App Updater Lifecycle Fix, Social Embeds & Dynamic Headline Scaling",
         markdownNotes = """
 ### Source & Article Deduplication

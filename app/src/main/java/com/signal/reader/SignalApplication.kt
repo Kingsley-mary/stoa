@@ -74,7 +74,7 @@ class SignalApplication : Application(), ImageLoaderFactory {
                 val req = chain.request()
                 val host = req.url.host
                 val builder = req.newBuilder()
-                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36 StoaReader/1.4")
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36")
                     .header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
                 if (req.header("Referer") == null) {
                     builder.header("Referer", "${req.url.scheme}://$host/")
