@@ -183,7 +183,7 @@ object FeedParser {
                                 author = author?.trim(),
                                 publishedTime = publishedTime,
                                 excerpt = excerpt,
-                                fullContent = if (!isExcerptOnly) fullHtml else null,
+                                fullContent = fullHtml.ifBlank { null },
                                 isExcerptOnly = isExcerptOnly,
                                 imageUrl = finalImageUrl
                             )
@@ -317,7 +317,7 @@ object FeedParser {
                                 author = author?.trim(),
                                 publishedTime = publishedTime,
                                 excerpt = excerpt,
-                                fullContent = if (!isExcerptOnly) fullHtml else null,
+                                fullContent = fullHtml.ifBlank { null },
                                 isExcerptOnly = isExcerptOnly,
                                 imageUrl = finalImageUrl
                             )

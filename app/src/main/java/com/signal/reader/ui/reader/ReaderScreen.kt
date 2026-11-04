@@ -144,6 +144,7 @@ import com.signal.reader.ui.theme.signalPressScale
 import com.signal.reader.ui.theme.signalSharedImage
 import kotlinx.coroutines.launch
 import org.jsoup.Jsoup
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -278,29 +279,7 @@ fun ReaderScreen(
         )
     }
 
-    LaunchedEffect(currentArticle.id) {
-        if (currentArticle.isExcerptOnly && extractedHtml == null && currentArticle.url.isNotBlank()) {
-            isExtracting = true
-            try {
-                val fullHtml = withContext(Dispatchers.IO) {
-                    ReadabilityExtractor.extractArticleHtml(currentArticle.url)
-                }
-                if (!fullHtml.isNullOrBlank()) {
-                    extractedHtml = fullHtml
-                    val repo = com.signal.reader.SignalApplication.instance.repository
-                    repo.updateArticleFullContent(currentArticle.id, fullHtml, false)
-                    if (currentArticle.imageUrl.isNullOrBlank() || currentArticle.imageUrl == "none") {
-                        val doc = org.jsoup.Jsoup.parse(fullHtml)
-                        val newImg = ImageResolver.extractOpenGraphImage(doc) ?: ImageResolver.extractBestImageFromHtml(doc)
-                        if (!newImg.isNullOrBlank()) {
-                            repo.updateArticleImage(currentArticle.id, newImg)
-                        }
-                    }
-                }
-            } catch (_: Exception) {}
-            isExtracting = false
-        }
-    }
+
 
     val blocks = remember(currentArticle.fullContent, currentArticle.excerpt, extractedHtml, effectiveHeroImage) {
         val raw = extractedHtml ?: currentArticle.fullContent ?: currentArticle.excerpt
@@ -1117,6 +1096,16 @@ private enum class VideoProvider {
     GENERIC
 }
 
+private enum class SocialPlatform(val displayName: String, val badge: String) {
+    TWITTER("X / Twitter", "𝕏"),
+    INSTAGRAM("Instagram", "Instagram"),
+    BLUESKY("Bluesky", "🦋 Bluesky"),
+    THREADS("Threads", "Threads"),
+    TIKTOK("TikTok", "TikTok"),
+    REDDIT("Reddit", "Reddit"),
+    GENERIC("Social", "Social")
+}
+
 private sealed class ContentBlock {
     data class Paragraph(val text: String, val html: String = text) : ContentBlock()
     data class Heading(val text: String, val level: Int) : ContentBlock()
@@ -1127,6 +1116,14 @@ private sealed class ContentBlock {
         val title: String? = null,
         val provider: VideoProvider = VideoProvider.GENERIC,
         val videoId: String? = null
+    ) : ContentBlock()
+    data class SocialEmbed(
+        val platform: SocialPlatform,
+        val author: String? = null,
+        val handle: String? = null,
+        val text: String,
+        val postUrl: String,
+        val mediaUrl: String? = null
     ) : ContentBlock()
     data class Quote(val text: String) : ContentBlock()
     data class BulletList(val items: List<String>, val htmlItems: List<String> = items) : ContentBlock()
@@ -1140,6 +1137,166 @@ private fun extractYouTubeVideoId(url: String): String? {
 private fun extractVimeoVideoId(url: String): String? {
     val regex = Regex("""vimeo\.com/(?:video/)?(\d+)""")
     return regex.find(url)?.groupValues?.get(1)
+}
+
+private fun extractSocialEmbedFromBlockquote(el: org.jsoup.nodes.Element): ContentBlock.SocialEmbed? {
+    val classes = el.classNames().map { it.lowercase(Locale.ROOT) }
+    val allText = el.text().trim()
+    val links = el.select("a[href]")
+    val lastLink = links.lastOrNull()?.attr("href")?.trim().orEmpty()
+
+    // 1. Twitter / X embed: class contains "twitter-tweet" or link contains twitter.com/x.com
+    val twitterLink = links.firstOrNull { it.attr("href").contains("twitter.com") || it.attr("href").contains("x.com") }?.attr("href")?.trim()
+    if (classes.any { it.contains("twitter") } || !twitterLink.isNullOrBlank()) {
+        val postUrl = twitterLink ?: lastLink
+        val pText = el.select("p").text().trim().ifBlank { allText }
+        val authorMatch = Regex("""[—–-]\s*([^(]+)\s*(?:\((@[^)]+)\))?""").find(allText)
+        val authorName = authorMatch?.groupValues?.get(1)?.trim()
+        val authorHandle = authorMatch?.groupValues?.getOrNull(2)?.trim()
+        val cleanText = pText.substringBefore("—").substringBefore("–").trim()
+        return ContentBlock.SocialEmbed(
+            platform = SocialPlatform.TWITTER,
+            author = authorName,
+            handle = authorHandle,
+            text = cleanText.ifBlank { allText },
+            postUrl = postUrl
+        )
+    }
+
+    // 2. Instagram: class "instagram-media" or instagram.com link
+    val igLink = links.firstOrNull { it.attr("href").contains("instagram.com") }?.attr("href")?.trim()
+    if (classes.any { it.contains("instagram") } || !igLink.isNullOrBlank()) {
+        val postUrl = igLink ?: lastLink
+        return ContentBlock.SocialEmbed(
+            platform = SocialPlatform.INSTAGRAM,
+            author = "Instagram",
+            handle = null,
+            text = el.select("p").firstOrNull()?.text()?.trim() ?: allText.take(180),
+            postUrl = postUrl
+        )
+    }
+
+    // 3. Bluesky: class contains "bluesky" or bsky.app link
+    val bskyLink = links.firstOrNull { it.attr("href").contains("bsky.app") }?.attr("href")?.trim()
+    if (classes.any { it.contains("bluesky") } || !bskyLink.isNullOrBlank()) {
+        val postUrl = bskyLink ?: lastLink
+        val pText = el.select("p").text().trim().ifBlank { allText }
+        return ContentBlock.SocialEmbed(
+            platform = SocialPlatform.BLUESKY,
+            author = "Bluesky",
+            handle = null,
+            text = pText,
+            postUrl = postUrl
+        )
+    }
+
+    // 4. Threads: threads.net link
+    val threadsLink = links.firstOrNull { it.attr("href").contains("threads.net") }?.attr("href")?.trim()
+    if (classes.any { it.contains("threads") } || !threadsLink.isNullOrBlank()) {
+        val postUrl = threadsLink ?: lastLink
+        return ContentBlock.SocialEmbed(
+            platform = SocialPlatform.THREADS,
+            author = "Threads",
+            handle = null,
+            text = el.select("p").text().trim().ifBlank { allText },
+            postUrl = postUrl
+        )
+    }
+
+    // 5. TikTok: tiktok.com link
+    val tiktokLink = links.firstOrNull { it.attr("href").contains("tiktok.com") }?.attr("href")?.trim()
+    if (classes.any { it.contains("tiktok") } || !tiktokLink.isNullOrBlank()) {
+        val postUrl = tiktokLink ?: lastLink
+        return ContentBlock.SocialEmbed(
+            platform = SocialPlatform.TIKTOK,
+            author = "TikTok",
+            handle = null,
+            text = el.select("p").text().trim().ifBlank { allText },
+            postUrl = postUrl
+        )
+    }
+
+    // 6. Reddit: reddit.com link
+    val redditLink = links.firstOrNull { it.attr("href").contains("reddit.com") }?.attr("href")?.trim()
+    if (classes.any { it.contains("reddit") } || !redditLink.isNullOrBlank()) {
+        val postUrl = redditLink ?: lastLink
+        return ContentBlock.SocialEmbed(
+            platform = SocialPlatform.REDDIT,
+            author = "Reddit",
+            handle = null,
+            text = allText,
+            postUrl = postUrl
+        )
+    }
+
+    return null
+}
+
+private fun extractSocialEmbedFromLink(url: String, fallbackText: String): ContentBlock.SocialEmbed? {
+    val clean = url.trim()
+    return when {
+        clean.contains("twitter.com/") || clean.contains("x.com/") -> {
+            val handleMatch = Regex("""(?:twitter\.com|x\.com)/([^/]+)/status/(\d+)""").find(clean)
+            val handle = handleMatch?.groupValues?.get(1)?.let { "@$it" }
+            ContentBlock.SocialEmbed(
+                platform = SocialPlatform.TWITTER,
+                author = handle ?: "X / Twitter Post",
+                handle = handle,
+                text = fallbackText.takeIf { it != clean } ?: "View post on X",
+                postUrl = clean
+            )
+        }
+        clean.contains("instagram.com/p/") || clean.contains("instagram.com/reel/") -> {
+            ContentBlock.SocialEmbed(
+                platform = SocialPlatform.INSTAGRAM,
+                author = "Instagram",
+                handle = null,
+                text = fallbackText.takeIf { it != clean } ?: "View post on Instagram",
+                postUrl = clean
+            )
+        }
+        clean.contains("bsky.app/profile/") -> {
+            val handleMatch = Regex("""bsky\.app/profile/([^/]+)/post/""").find(clean)
+            val handle = handleMatch?.groupValues?.get(1)?.let { "@$it" }
+            ContentBlock.SocialEmbed(
+                platform = SocialPlatform.BLUESKY,
+                author = handle ?: "Bluesky Post",
+                handle = handle,
+                text = fallbackText.takeIf { it != clean } ?: "View post on Bluesky",
+                postUrl = clean
+            )
+        }
+        clean.contains("threads.net/@") -> {
+            ContentBlock.SocialEmbed(
+                platform = SocialPlatform.THREADS,
+                author = "Threads Post",
+                handle = null,
+                text = fallbackText.takeIf { it != clean } ?: "View post on Threads",
+                postUrl = clean
+            )
+        }
+        clean.contains("tiktok.com/@") -> {
+            ContentBlock.SocialEmbed(
+                platform = SocialPlatform.TIKTOK,
+                author = "TikTok Video",
+                handle = null,
+                text = fallbackText.takeIf { it != clean } ?: "Watch video on TikTok",
+                postUrl = clean
+            )
+        }
+        clean.contains("reddit.com/r/") -> {
+            val subMatch = Regex("""reddit\.com/r/([^/]+)""").find(clean)
+            val sub = subMatch?.groupValues?.get(1)?.let { "r/$it" }
+            ContentBlock.SocialEmbed(
+                platform = SocialPlatform.REDDIT,
+                author = sub ?: "Reddit Post",
+                handle = sub,
+                text = fallbackText.takeIf { it != clean } ?: "View discussion on Reddit",
+                postUrl = clean
+            )
+        }
+        else -> null
+    }
 }
 
 private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List<ContentBlock> {
@@ -1379,24 +1536,33 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                     )
                     processedElements.addAll(el.getAllElements())
                 } else {
-                    val img = el.selectFirst("img")
                     val text = el.text().trim()
-                    val realSrc = img?.let { ImageResolver.extractBestImageUrlFromElement(it) ?: it.attr("src").ifBlank { it.attr("data-src") }.trim() }
-                    if (img != null && text.length < 5) {
-                        val alt = img.attr("alt").trim().ifBlank { img.attr("title").trim() }
-                        if (!realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(realSrc)) {
-                            blocks.add(ContentBlock.Image(realSrc, alt.ifBlank { null }))
-                        }
+                    val socialLinkEmbed = if (href.isNotBlank() && (text.length < 120 || text == href || href.contains("/status/") || href.contains("/p/"))) {
+                        extractSocialEmbedFromLink(href, text)
+                    } else null
+
+                    if (socialLinkEmbed != null) {
+                        blocks.add(socialLinkEmbed)
+                        processedElements.addAll(el.getAllElements())
                     } else {
-                        if (text.isNotBlank()) {
-                            blocks.add(ContentBlock.Paragraph(text = text, html = el.html()))
+                        val img = el.selectFirst("img")
+                        val realSrc = img?.let { ImageResolver.extractBestImageUrlFromElement(it) ?: it.attr("src").ifBlank { it.attr("data-src") }.trim() }
+                        if (img != null && text.length < 5) {
+                            val alt = img.attr("alt").trim().ifBlank { img.attr("title").trim() }
+                            if (!realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(realSrc)) {
+                                blocks.add(ContentBlock.Image(realSrc, alt.ifBlank { null }))
+                            }
+                        } else {
+                            if (text.isNotBlank()) {
+                                blocks.add(ContentBlock.Paragraph(text = text, html = el.html()))
+                            }
+                            if (img != null && !realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(realSrc)) {
+                                val alt = img.attr("alt").trim()
+                                blocks.add(ContentBlock.Image(realSrc, alt.ifBlank { null }))
+                            }
                         }
-                        if (img != null && !realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(realSrc)) {
-                            val alt = img.attr("alt").trim()
-                            blocks.add(ContentBlock.Image(realSrc, alt.ifBlank { null }))
-                        }
+                        processedElements.add(el)
                     }
-                    processedElements.add(el)
                 }
             }
             el.tagName().equals("img", ignoreCase = true) -> {
@@ -1410,10 +1576,16 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                 }
             }
             el.tagName().equals("blockquote", ignoreCase = true) -> {
-                val text = el.text().trim()
-                if (text.isNotBlank()) {
-                    blocks.add(ContentBlock.Quote(text))
+                val socialEmbed = extractSocialEmbedFromBlockquote(el)
+                if (socialEmbed != null) {
+                    blocks.add(socialEmbed)
                     processedElements.addAll(el.getAllElements())
+                } else {
+                    val text = el.text().trim()
+                    if (text.isNotBlank()) {
+                        blocks.add(ContentBlock.Quote(text))
+                        processedElements.addAll(el.getAllElements())
+                    }
                 }
             }
             el.tagName().lowercase() in listOf("ul", "ol") -> {
@@ -1605,6 +1777,9 @@ private fun RenderContentBlock(
                 )
             }
         }
+        is ContentBlock.SocialEmbed -> {
+            SocialEmbedCard(block = block)
+        }
         is ContentBlock.BulletList -> {
             Column(
                 modifier = Modifier
@@ -1641,6 +1816,135 @@ private fun RenderContentBlock(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SocialEmbedCard(
+    block: ContentBlock.SocialEmbed,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val colors = SignalTheme.colors
+    val haptics = rememberSignalHaptics()
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(colors.card)
+            .border(1.dp, colors.line, RoundedCornerShape(18.dp))
+            .signalTactileClick(
+                targetScale = SignalTactile.ButtonPressScale,
+                onClick = {
+                    haptics.pop()
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(block.postUrl)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            )
+            .padding(16.dp)
+    ) {
+        // Top header row: Platform badge + author + external indicator
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
+                // Platform pill
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(colors.ink)
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = block.platform.badge,
+                        color = colors.bg,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (!block.author.isNullOrBlank()) {
+                    Text(
+                        text = block.author,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                if (!block.handle.isNullOrBlank()) {
+                    Text(
+                        text = block.handle,
+                        fontSize = 13.sp,
+                        color = colors.mute,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Text(
+                text = "↗",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.accent
+            )
+        }
+
+        if (block.text.isNotBlank()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = block.text,
+                fontSize = 15.sp,
+                lineHeight = 21.sp,
+                color = colors.ink
+            )
+        }
+
+        if (!block.mediaUrl.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.card)
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(block.mediaUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Social embed media preview",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
+                    contentScale = ContentScale.FillWidth
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = "View on ${block.platform.displayName}",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = colors.mute
+        )
     }
 }
 

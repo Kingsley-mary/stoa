@@ -3,14 +3,14 @@
     "name": "Creative Boom",
     "description": "Daily stories on illustration, graphic design, photography and creative work",
     "siteUrl": "https://www.creativeboom.com",
-    "feedUrl": "https://www.creativeboom.com/feed/",
+    "feedUrl": "https://www.creativeboom.com/feed",
     "topics": ["Design", "Illustration", "Photography", "Art"]
   },
   {
     "name": "Dezeen",
     "description": "Architecture, interiors and modern design magazine",
     "siteUrl": "https://www.dezeen.com",
-    "feedUrl": "https://www.dezeen.com/feed/",
+    "feedUrl": "https://www.dezeen.com/feed",
     "topics": ["Architecture", "Interiors", "Design"]
   },
   {
@@ -24,7 +24,7 @@
     "name": "Designboom",
     "description": "Architecture, design, art and technology",
     "siteUrl": "https://www.designboom.com",
-    "feedUrl": "https://www.designboom.com/feed/",
+    "feedUrl": "https://www.designboom.com/feed",
     "topics": ["Design", "Architecture", "Art"]
   },
   {
@@ -157,7 +157,7 @@
     "name": "MIT Technology Review",
     "description": "Authoritative journalism on emerging tech, computing and AI",
     "siteUrl": "https://www.technologyreview.com",
-    "feedUrl": "https://www.technologyreview.com/feed/",
+    "feedUrl": "https://www.technologyreview.com/feed",
     "topics": ["Tech", "AI", "Science"]
   },
   {

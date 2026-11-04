@@ -36,6 +36,12 @@ interface SourceDao {
     @Query("SELECT * FROM sources WHERE feedUrl = :feedUrl LIMIT 1")
     suspend fun getSourceByFeedUrl(feedUrl: String): SourceEntity?
 
+    @Query("SELECT * FROM sources WHERE LOWER(feedUrl) = LOWER(:feedUrl) OR LOWER(feedUrl) = LOWER(:altFeedUrl) LIMIT 1")
+    suspend fun getSourceByFeedUrlWithAlt(feedUrl: String, altFeedUrl: String): SourceEntity?
+
+    @Query("SELECT * FROM sources WHERE LOWER(name) = LOWER(:name) LIMIT 1")
+    suspend fun getSourceByName(name: String): SourceEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(source: SourceEntity): Long
 

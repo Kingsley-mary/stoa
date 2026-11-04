@@ -85,13 +85,26 @@ object ReadabilityExtractor {
                 }
             }
 
-            // 4. Strip non-content iframes, keeping YouTube, Vimeo, Twitch, and direct video embeds
+            // 4. Capture lead hero cover image before stripping header/clutter
+            val leadOgImage = ImageResolver.extractOpenGraphImage(doc)
+            val leadFeatureEl = doc.selectFirst("figure[data-is-feature-img='true'], .article-header figure, header figure, [data-is-feature-img]")
+            val leadFeatureImg = leadFeatureEl?.selectFirst("img")?.let { ImageResolver.extractBestImageUrlFromElement(it) }
+            val bgHeaderMatch = Regex("""background-image:\s*url\(['"]?([^'"\)]+)['"]?\)""", RegexOption.IGNORE_CASE)
+                .find(doc.select("header[style*=background-image], div[style*=background-image]").attr("style"))
+            val bgHeaderUrl = bgHeaderMatch?.groupValues?.get(1)?.let { ImageResolver.cleanUrl(it) }?.takeIf { !ImageResolver.isTrackingUrl(it) }
+            val effectiveLeadCover = leadFeatureImg ?: leadOgImage ?: bgHeaderUrl
+
+            // 5. Strip non-content iframes, keeping YouTube, Vimeo, Twitch, and social embeds (Twitter, Instagram, Bluesky, TikTok)
             doc.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src").lowercase()
-                val isVideo = src.contains("youtube") || src.contains("youtu.be") ||
+                val isSocialOrVideo = src.contains("youtube") || src.contains("youtu.be") ||
                               src.contains("vimeo") || src.contains("player.vimeo") ||
-                              src.contains("twitch") || src.contains("embed")
-                if (!isVideo) {
+                              src.contains("twitch") || src.contains("embed") ||
+                              src.contains("twitter") || src.contains("x.com") ||
+                              src.contains("instagram") || src.contains("tiktok") ||
+                              src.contains("reddit") || src.contains("bluesky") ||
+                              src.contains("threads")
+                if (!isSocialOrVideo) {
                     iframe.remove()
                 }
             }
@@ -121,6 +134,16 @@ object ReadabilityExtractor {
                 // Heuristic: container with the most paragraph text
                 bestContainer = doc.body().select("div, section")
                     .maxByOrNull { it.select("p").sumOf { p -> p.text().length } }
+            }
+
+            // If a lead cover image was discovered outside bestContainer, prepend it as a lead figure
+            if (bestContainer != null && !effectiveLeadCover.isNullOrBlank()) {
+                val cleanLead = ImageResolver.resolveHighRes(effectiveLeadCover) ?: effectiveLeadCover
+                val existingImgs = bestContainer.select("img").map { ImageResolver.extractBestImageUrlFromElement(it) ?: it.attr("src") }
+                val leadBase = cleanLead.substringBefore("?").trimEnd('/')
+                if (existingImgs.none { it.contains(leadBase) }) {
+                    bestContainer.prepend("<figure class=\"lead-hero-figure\"><img src=\"$cleanLead\" alt=\"Lead Article Cover\" /></figure>")
+                }
             }
 
             bestContainer?.html()?.takeIf { it.isNotBlank() }

@@ -36,6 +36,7 @@ object ImageResolver {
             .replace("&#x3F;", "?", ignoreCase = true)
             .replace("&#x3D;", "=", ignoreCase = true)
             .replace("&#x20;", " ", ignoreCase = true)
+            .replace("&#x25;", "%", ignoreCase = true)
             .replace("&#38;", "&")
             .replace("&#58;", ":")
             .replace("&#47;", "/")

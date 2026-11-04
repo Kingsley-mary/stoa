@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -278,13 +279,29 @@ private fun HeroHeadlineText(
     modifier: Modifier = Modifier
 ) {
     val colors = SignalTheme.colors
+    val charCount = title.length
+
+    // Dynamic typographic scaling: maximum punch for short titles (34sp),
+    // scaling down gracefully (28sp -> 23sp -> 19sp) for long editorial headlines
+    // so long titles never truncate jarringly.
+    val (scaledFontSize, scaledLineHeight) = when {
+        charCount <= 42 -> 34.sp to 33.sp
+        charCount <= 72 -> 28.sp to 28.sp
+        charCount <= 105 -> 23.sp to 24.sp
+        else -> 19.sp to 21.sp
+    }
+
+    val dynamicHeadlineStyle = SignalTheme.typography.heroHeadline.copy(
+        fontSize = scaledFontSize,
+        lineHeight = scaledLineHeight
+    )
 
     if (!animateWords || SignalTheme.reducedMotion) {
         Text(
             text = title.uppercase(),
-            style = SignalTheme.typography.heroHeadline,
+            style = dynamicHeadlineStyle,
             color = colors.ink,
-            maxLines = 4,
+            maxLines = 5,
             modifier = modifier.alpha(if (read) 0.45f else 1.0f)
         )
     } else {
@@ -297,14 +314,14 @@ private fun HeroHeadlineText(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             words.forEachIndexed { idx, word ->
-                WordRise(word = word, index = idx)
+                WordRise(word = word, index = idx, style = dynamicHeadlineStyle)
             }
         }
     }
 }
 
 @Composable
-private fun WordRise(word: String, index: Int) {
+private fun WordRise(word: String, index: Int, style: TextStyle = SignalTheme.typography.heroHeadline) {
     val offsetY = remember { Animatable(32f) }
     val alpha = remember { Animatable(0f) }
 
@@ -328,7 +345,7 @@ private fun WordRise(word: String, index: Int) {
     ) {
         Text(
             text = word,
-            style = SignalTheme.typography.heroHeadline,
+            style = style,
             color = SignalTheme.colors.ink,
             modifier = Modifier
                 .offset { IntOffset(0, (offsetY.value * density).roundToInt()) }

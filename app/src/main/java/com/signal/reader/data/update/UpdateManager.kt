@@ -6,12 +6,17 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -173,7 +178,19 @@ class UpdateManager(
         }
     }
 
-    suspend fun downloadAndInstall(available: UpdateState.Available) = withContext(Dispatchers.IO) {
+    private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    fun startDownloadAndInstall(available: UpdateState.Available) {
+        managerScope.launch {
+            performDownloadAndInstall(available)
+        }
+    }
+
+    suspend fun downloadAndInstall(available: UpdateState.Available) = withContext(Dispatchers.IO + NonCancellable) {
+        performDownloadAndInstall(available)
+    }
+
+    private suspend fun performDownloadAndInstall(available: UpdateState.Available) {
         try {
             _updateState.value = UpdateState.Downloading(0, 0, 0, available.apkUrl)
 
@@ -185,7 +202,7 @@ class UpdateManager(
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
                 _updateState.value = UpdateState.Error("Download failed with HTTP ${response.code}", available.apkUrl)
-                return@withContext
+                return
             }
 
             val body = response.body ?: throw IllegalStateException("Download body was null")
@@ -258,6 +275,7 @@ class UpdateManager(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
                 _updateState.value = UpdateState.ReadyToInstall(apkFile, apkUrl)
                 try {
+                    Toast.makeText(context, "Please enable unknown sources to install update", Toast.LENGTH_LONG).show()
                     val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
                         data = Uri.parse("package:${context.packageName}")
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

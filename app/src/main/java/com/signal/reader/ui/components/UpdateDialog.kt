@@ -159,9 +159,7 @@ fun UpdateDialog(
                                         backgroundColor = colors.ink,
                                         borderColor = colors.ink,
                                         onClick = {
-                                            coroutineScope.launch {
-                                                updateManager.downloadAndInstall(updateState)
-                                            }
+                                            updateManager.startDownloadAndInstall(updateState)
                                         }
                                     )
                                     .padding(vertical = 11.dp),

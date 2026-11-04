@@ -37,8 +37,36 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.15",
+        version = "v1.4.16",
         isCurrent = true,
+        summary = "Creative Boom Deduplication, In-App Updater Lifecycle Fix, Social Embeds & Dynamic Headline Scaling",
+        markdownNotes = """
+### Source & Article Deduplication
+- **Eliminated Duplicate Feeds**: Harmonized canonical URLs between catalog presets and starter feeds (e.g. trailing slash differences for Creative Boom, Designboom, and MIT Technology Review).
+- **Automated Startup Merge**: On launch, duplicate sources are automatically identified, merged, and cleaned up in SQLite without losing saved articles or read status.
+- **Article Deduplication**: Purges duplicate article entries sharing GUID, URL, or title under merged sources.
+
+### In-App Update Modal Lifecycle Fix
+- **Persistent Download Scope**: Downloads now run on UpdateManager's persistent supervisor scope with `NonCancellable` IO dispatching, preventing UI recompositions from cancelling the download job.
+- **Unified Dialog Presentation**: Streamlined dialog lifecycle in MainActivity so the update dialog remains mounted without being abruptly torn down during state transitions.
+- **Update Error Recovery**: When errors occur, a structured error view with direct browser fallback and retry options prevents the modal from silently closing.
+
+### Rich Native Social Media Embeds
+- **Platform-Native Embed Cards**: Social links and blockquotes from **X / Twitter**, **Instagram**, **Bluesky**, **Threads**, **TikTok**, and **Reddit** now render as elegant, tactile cards in reader mode.
+- **Author & Post Details**: Displays platform badge, author name, handle, clean post text, and media previews with a one-tap action to open in native apps or browser.
+
+### Dynamic Hero Headline Scaling
+- **Autosizing Typography**: Large top hero cards now dynamically scale headline typography based on character length (from 34sp down to 19sp across 5 allowed lines), ensuring long editorial titles fit comfortably without abrupt or jarring cutoffs.
+- **Harmonized Animations**: Staggered word-by-word entrance animations adopt the dynamically computed font size and line height.
+
+### Intentional Excerpt Reading Experience
+- **Restored User Choice**: Removed automatic readability overrides on excerpt-only articles; reader mode presents the original excerpt alongside the intentional "Extract full article" and "Read on source" action pill.
+- **Feed HTML Preservation**: Fixed parser bug that previously discarded HTML and inline media when an article was flagged as excerpt-only.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.15",
+        isCurrent = false,
         summary = "Stale Database Re-Resolution, Auto-Reader Extraction & Android 11 Package Installer",
         markdownNotes = """
 ### Zero Stale Images (Automatic Re-Resolution)

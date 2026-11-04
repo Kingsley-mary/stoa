@@ -132,4 +132,16 @@ interface ArticleDao {
         ORDER BY a.publishedTime DESC
     """)
     suspend fun getAllSearchableArticles(): List<ArticleEntity>
+
+    @Query("UPDATE articles SET sourceId = :targetSourceId WHERE sourceId = :sourceId")
+    suspend fun reassignArticlesSource(sourceId: Long, targetSourceId: Long)
+
+    @Query("DELETE FROM articles WHERE id NOT IN (SELECT MIN(id) FROM articles GROUP BY guid, sourceId)")
+    suspend fun deduplicateArticlesByGuid()
+
+    @Query("DELETE FROM articles WHERE url IS NOT NULL AND url != '' AND id NOT IN (SELECT MIN(id) FROM articles WHERE url IS NOT NULL AND url != '' GROUP BY url, sourceId)")
+    suspend fun deduplicateArticlesByUrl()
+
+    @Query("DELETE FROM articles WHERE id NOT IN (SELECT MIN(id) FROM articles GROUP BY LOWER(title), sourceId)")
+    suspend fun deduplicateArticlesByTitle()
 }

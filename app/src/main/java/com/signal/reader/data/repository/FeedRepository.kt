@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class FeedRepository(
@@ -67,7 +68,11 @@ class FeedRepository(
         feedUrl: String,
         description: String = ""
     ): Long = withContext(Dispatchers.IO) {
-        val existing = sourceDao.getSourceByFeedUrl(feedUrl)
+        val cleanFeed = feedUrl.trim()
+        val altFeed = if (cleanFeed.endsWith("/")) cleanFeed.trimEnd('/') else "$cleanFeed/"
+        val existing = sourceDao.getSourceByFeedUrlWithAlt(cleanFeed, altFeed)
+            ?: sourceDao.getSourceByName(name.trim())
+
         if (existing != null) {
             if (!existing.followed) {
                 sourceDao.setFollowed(existing.id, true)
@@ -79,10 +84,10 @@ class FeedRepository(
 
         val maxOrder = sourceDao.getAllSources().maxOfOrNull { it.displayOrder } ?: 0
         val entity = SourceEntity(
-            name = name,
-            siteUrl = siteUrl,
-            feedUrl = feedUrl,
-            description = description,
+            name = name.trim(),
+            siteUrl = siteUrl.trim(),
+            feedUrl = cleanFeed,
+            description = description.trim(),
             followed = true,
             displayOrder = maxOrder + 1
         )
@@ -99,7 +104,11 @@ class FeedRepository(
         val idsToRefresh = mutableListOf<Long>()
 
         for (item in sources) {
-            val existing = sourceDao.getSourceByFeedUrl(item.feedUrl)
+            val cleanFeed = item.feedUrl.trim()
+            val altFeed = if (cleanFeed.endsWith("/")) cleanFeed.trimEnd('/') else "$cleanFeed/"
+            val existing = sourceDao.getSourceByFeedUrlWithAlt(cleanFeed, altFeed)
+                ?: sourceDao.getSourceByName(item.name.trim())
+
             if (existing != null) {
                 if (!existing.followed) {
                     sourceDao.setFollowed(existing.id, true)
@@ -108,10 +117,10 @@ class FeedRepository(
             } else {
                 currentOrder++
                 val entity = SourceEntity(
-                    name = item.name,
-                    siteUrl = item.siteUrl,
-                    feedUrl = item.feedUrl,
-                    description = item.description,
+                    name = item.name.trim(),
+                    siteUrl = item.siteUrl.trim(),
+                    feedUrl = cleanFeed,
+                    description = item.description.trim(),
                     followed = true,
                     displayOrder = currentOrder
                 )
@@ -265,6 +274,41 @@ class FeedRepository(
 
     suspend fun resetFailedArticleImages() = withContext(Dispatchers.IO) {
         articleDao.resetFailedArticleImages()
+    }
+
+    suspend fun deduplicateSourcesAndArticles() = withContext(Dispatchers.IO) {
+        val allSources = sourceDao.getAllSources()
+        // 1. Deduplicate sources by normalized feed URL
+        val urlGrouped = allSources.groupBy { it.feedUrl.trim().trimEnd('/').lowercase(Locale.ROOT) }
+        for ((_, sources) in urlGrouped) {
+            if (sources.size > 1) {
+                val primary = sources.first()
+                val duplicates = sources.drop(1)
+                for (dup in duplicates) {
+                    articleDao.reassignArticlesSource(dup.id, primary.id)
+                    sourceDao.deleteById(dup.id)
+                }
+            }
+        }
+
+        // 2. Deduplicate sources by name
+        val remaining = sourceDao.getAllSources()
+        val nameGrouped = remaining.groupBy { it.name.trim().lowercase(Locale.ROOT) }
+        for ((_, sources) in nameGrouped) {
+            if (sources.size > 1) {
+                val primary = sources.first()
+                val duplicates = sources.drop(1)
+                for (dup in duplicates) {
+                    articleDao.reassignArticlesSource(dup.id, primary.id)
+                    sourceDao.deleteById(dup.id)
+                }
+            }
+        }
+
+        // 3. Deduplicate articles under the same source
+        articleDao.deduplicateArticlesByGuid()
+        articleDao.deduplicateArticlesByUrl()
+        articleDao.deduplicateArticlesByTitle()
     }
 
     suspend fun updateArticleFullContent(articleId: Long, fullContent: String, isExcerptOnly: Boolean = false) = withContext(Dispatchers.IO) {

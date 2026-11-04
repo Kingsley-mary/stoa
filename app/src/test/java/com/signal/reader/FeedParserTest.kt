@@ -253,14 +253,6 @@ class FeedParserTest {
             }
         }
     }
-        val parsed = FeedParser.parse(content, "https://hypebeast.com/feed")
-        assertTrue("Parsed Hypebeast items should not be empty", parsed.items.isNotEmpty())
-        for (item in parsed.items) {
-            println("Hypebeast Item: '${item.title}' -> img: '${item.imageUrl}'")
-            assertNotNull("Hypebeast article '${item.title}' must have imageUrl", item.imageUrl)
-            assertFalse("Hypebeast article '${item.title}' imageUrl should not be blank", item.imageUrl!!.isBlank())
-        }
-    }
 
     @Test
     fun testRealRestOfWorldXml() {
@@ -286,5 +278,40 @@ class FeedParserTest {
         } catch (_: Exception) {
             // Live network test may fail in offline or restricted environments
         }
+    }
+
+    @Test
+    fun testFeedParserPreservesFullContentForExcerpts() {
+        val sampleFeed = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0">
+              <channel>
+                <title>Test Feed</title>
+                <link>https://example.com</link>
+                <item>
+                  <title>Short story with image</title>
+                  <link>https://example.com/story-1</link>
+                  <guid>https://example.com/story-1</guid>
+                  <pubDate>Mon, 26 Oct 2026 12:00:00 +0000</pubDate>
+                  <description><![CDATA[<p><img src="https://example.com/img.jpg" />A brief paragraph under 150 words.</p>]]></description>
+                </item>
+              </channel>
+            </rss>
+        """.trimIndent()
+
+        val parsed = FeedParser.parse(sampleFeed, "https://example.com/feed")
+        val item = parsed.items.first()
+        assertTrue("Item should be marked isExcerptOnly because wordCount < 150", item.isExcerptOnly)
+        assertNotNull("fullContent must NOT be null even when isExcerptOnly is true", item.fullContent)
+        assertTrue("fullContent must contain original HTML", item.fullContent!!.contains("img.jpg"))
+    }
+
+    @Test
+    fun testImageResolverHexPercentEntityCleanup() {
+        val encodedUrl = "https&#x3A;&#x2F;&#x2F;image-cdn.hypb.st&#x2F;https&#x25;3A&#x25;2F&#x25;2Fhypebeast.com&#x2F;image.jpg&#x3F;w&#x3D;1080&amp;cbr&#x3D;1"
+        val cleaned = ImageResolver.cleanUrl(encodedUrl)
+        assertEquals("https://image-cdn.hypb.st/https%3A%2F%2Fhypebeast.com/image.jpg?w=1080&cbr=1", cleaned)
+        assertFalse(cleaned.contains("&#x"))
+        assertFalse(cleaned.contains("&amp;"))
     }
 }

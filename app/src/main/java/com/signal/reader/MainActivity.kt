@@ -641,19 +641,19 @@ fun SignalAppNav(
         }
 
         // Centered Animated Update Dialog (auto-detected on launch or via manual trigger)
-        if (updateState is UpdateState.Available && (updateState as UpdateState.Available).versionName != dismissedUpdateVersion) {
+        val showUpdateDialog = when (val state = updateState) {
+            is UpdateState.Available -> state.versionName != dismissedUpdateVersion
+            is UpdateState.Downloading, is UpdateState.ReadyToInstall, is UpdateState.Error -> true
+            else -> false
+        }
+        if (showUpdateDialog) {
             UpdateDialog(
                 updateState = updateState,
                 updateManager = updateManager,
                 onDismiss = {
-                    dismissedUpdateVersion = (updateState as UpdateState.Available).versionName
-                }
-            )
-        } else if (updateState is UpdateState.Downloading || updateState is UpdateState.ReadyToInstall) {
-            UpdateDialog(
-                updateState = updateState,
-                updateManager = updateManager,
-                onDismiss = {
+                    if (updateState is UpdateState.Available) {
+                        dismissedUpdateVersion = (updateState as UpdateState.Available).versionName
+                    }
                     updateManager.resetState()
                 }
             )
