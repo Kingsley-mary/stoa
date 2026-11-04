@@ -202,6 +202,7 @@ class FeedRepository(
     suspend fun refreshSource(sourceId: Long): Int = withContext(Dispatchers.IO) {
         val source = sourceDao.getSourceById(sourceId) ?: return@withContext 0
         try {
+            articleDao.resetFailedArticleImages()
             val parsedFeed = try {
                 fetcher.fetchAndParse(source.feedUrl)
             } catch (e: Exception) {
@@ -255,6 +256,7 @@ class FeedRepository(
     }
 
     suspend fun refreshAllFollowedSources(): Int = withContext(Dispatchers.IO) {
+        articleDao.resetFailedArticleImages()
         val sources = sourceDao.getFollowedSources()
         var totalNew = 0
         coroutineScope {
@@ -319,11 +321,40 @@ class FeedRepository(
         articleDao.updateImageUrl(articleId, imageUrl)
     }
 
+    private val httpClient = FeedFetcher.createDefaultClient()
+
+    private fun fetchOgImage(articleUrl: String): String? {
+        val request = Request.Builder()
+            .url(articleUrl)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+            )
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .build()
+
+        return httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return@use null
+            val body = response.body ?: return@use null
+            val source = body.source()
+            val maxBytes = 256 * 1024L
+            val buffer = okio.Buffer()
+            var totalRead = 0L
+            while (totalRead < maxBytes && !source.exhausted()) {
+                val read = source.read(buffer, minOf(8192L, maxBytes - totalRead))
+                if (read == -1L) break
+                totalRead += read
+            }
+            val html = buffer.readString(Charsets.UTF_8)
+            ImageResolver.extractMetaImage(html, articleUrl)
+        }
+    }
+
     suspend fun resolveMissingArticleImages(limit: Int = 30) = withContext(Dispatchers.IO) {
         val missing = articleDao.getArticlesWithoutImage(limit)
         if (missing.isEmpty()) return@withContext
 
-        val client = FeedFetcher.createDefaultClient()
         val semaphore = Semaphore(4)
         coroutineScope {
             missing.map { article ->
@@ -335,26 +366,11 @@ class FeedRepository(
                     }
                     semaphore.withPermit {
                         try {
-                            val req = Request.Builder()
-                                .url(url)
-                                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36 StoaReader/1.4")
-                                .build()
-                            client.newCall(req).execute().use { response ->
-                                if (response.isSuccessful) {
-                                    val body = response.body?.string()
-                                    if (!body.isNullOrBlank()) {
-                                        val doc = Jsoup.parse(body)
-                                        val ogImg = ImageResolver.extractOpenGraphImage(doc)
-                                            ?: ImageResolver.extractBestImageFromHtml(doc)
-                                        if (!ogImg.isNullOrBlank()) {
-                                            articleDao.updateImageUrl(article.id, ogImg)
-                                        } else {
-                                            articleDao.updateImageUrl(article.id, "none")
-                                        }
-                                    } else {
-                                        articleDao.updateImageUrl(article.id, "none")
-                                    }
-                                }
+                            val ogImg = fetchOgImage(url)
+                            if (!ogImg.isNullOrBlank()) {
+                                articleDao.updateImageUrl(article.id, ogImg)
+                            } else {
+                                articleDao.updateImageUrl(article.id, "none")
                             }
                         } catch (_: Exception) {
                             // Don't mark as "none" on network exceptions; allow retry next time

@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +59,12 @@ fun UpdateDialog(
     val context = LocalContext.current
     val colors = SignalTheme.colors
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(updateState) {
+        if (updateState is UpdateState.ReadyToInstall) {
+            updateManager.installApk(context, updateState.apkFile, updateState.apkUrl)
+        }
+    }
 
     val isVisible = updateState is UpdateState.Available ||
             updateState is UpdateState.Downloading ||
@@ -277,7 +284,7 @@ fun UpdateDialog(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "Install now",
+                                    text = "Install Update",
                                     color = colors.bg,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold

@@ -254,9 +254,6 @@ class UpdateManager(
             }
 
             _updateState.value = UpdateState.ReadyToInstall(targetApk, available.apkUrl)
-            withContext(Dispatchers.Main) {
-                installApk(context, targetApk, available.apkUrl)
-            }
         } catch (e: CancellationException) {
             _updateState.value = UpdateState.Idle
             throw e
@@ -266,61 +263,67 @@ class UpdateManager(
     }
 
     fun installApk(context: Context, apkFile: File, apkUrl: String = "") {
-        try {
-            if (!apkFile.exists()) {
-                _updateState.value = UpdateState.Error("APK file not found.", apkUrl)
-                return
-            }
+        if (!apkFile.exists()) {
+            _updateState.value = UpdateState.Error("Downloaded APK file not found.", apkUrl)
+            return
+        }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-                _updateState.value = UpdateState.ReadyToInstall(apkFile, apkUrl)
-                try {
-                    Toast.makeText(context, "Please enable unknown sources to install update", Toast.LENGTH_LONG).show()
-                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                        data = Uri.parse("package:${context.packageName}")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!context.packageManager.canRequestPackageInstalls()) {
+                val permissionIntent = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${context.packageName}")
+                ).apply {
+                    if (context !is android.app.Activity) {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    context.startActivity(settingsIntent)
+                }
+                try {
+                    context.startActivity(permissionIntent)
                 } catch (_: Exception) {
                     val fallbackIntent = Intent(Settings.ACTION_SECURITY_SETTINGS).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        if (context !is android.app.Activity) {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
                     }
                     context.startActivity(fallbackIntent)
                 }
                 return
             }
+        }
 
-            apkFile.setReadable(true, false)
-            val uri = FileProvider.getUriForFile(
+        try {
+            val apkUri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
                 apkFile
             )
 
             val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-            }
-
-            // Explicitly grant read URI permission to all potential installer packages
-            val knownInstallers = listOf("com.google.android.packageinstaller", "com.android.packageinstaller")
-            for (pkg in knownInstallers) {
-                try {
-                    context.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                } catch (_: Exception) {}
-            }
-            try {
-                val resInfoList = context.packageManager.queryIntentActivities(installIntent, PackageManager.MATCH_DEFAULT_ONLY)
-                for (resolveInfo in resInfoList) {
-                    context.grantUriPermission(resolveInfo.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if (context !is android.app.Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-            } catch (_: Exception) {}
+            }
 
-            _updateState.value = UpdateState.ReadyToInstall(apkFile, apkUrl)
+            // Grant explicit URI permission to known system package installers
+            val resInfoList = context.packageManager.queryIntentActivities(
+                installIntent,
+                PackageManager.MATCH_DEFAULT_ONLY
+            )
+            for (resolveInfo in resInfoList) {
+                val packageName = resolveInfo.activityInfo.packageName
+                context.grantUriPermission(
+                    packageName,
+                    apkUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+
             context.startActivity(installIntent)
         } catch (e: Exception) {
-            _updateState.value = UpdateState.Error("Couldn't start package installer: ${e.localizedMessage}", apkUrl)
+            _updateState.value = UpdateState.Error("Failed to launch installer: ${e.localizedMessage}", apkUrl)
         }
     }
 

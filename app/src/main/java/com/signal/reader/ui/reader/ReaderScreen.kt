@@ -1512,7 +1512,9 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                         )
                     }
                 } else if (img != null) {
-                    val src = ImageResolver.extractBestImageUrlFromElement(img) ?: img.attr("src").ifBlank { img.attr("data-src") }.trim()
+                    val src = ImageResolver.extractFromHtml(el.outerHtml())
+                        ?: ImageResolver.extractBestImageUrlFromElement(img)
+                        ?: img.attr("src").ifBlank { img.attr("data-src") }.trim()
                     val caption = el.selectFirst("figcaption, .image-caption, .caption, small")?.text()?.trim()
                     if (!src.isNullOrBlank() && !src.startsWith("data:") && seenImages.add(src)) {
                         blocks.add(ContentBlock.Image(src, caption?.ifBlank { img.attr("alt").trim() }?.ifBlank { null }))
@@ -1623,7 +1625,11 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                         processedElements.addAll(el.getAllElements())
                     } else {
                         val img = el.selectFirst("img")
-                        val realSrc = img?.let { ImageResolver.extractBestImageUrlFromElement(it) ?: it.attr("src").ifBlank { it.attr("data-src") }.trim() }
+                        val realSrc = img?.let {
+                            ImageResolver.extractFromHtml(it.outerHtml())
+                                ?: ImageResolver.extractBestImageUrlFromElement(it)
+                                ?: it.attr("src").ifBlank { it.attr("data-src") }.trim()
+                        }
                         if (img != null && text.length < 5) {
                             val alt = img.attr("alt").trim().ifBlank { img.attr("title").trim() }
                             if (!realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(realSrc)) {
@@ -1644,9 +1650,11 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
             }
             el.tagName().equals("img", ignoreCase = true) -> {
                 if (el.parent()?.tagName()?.lowercase() !in listOf("figure", "p")) {
-                    val src = ImageResolver.extractBestImageUrlFromElement(el) ?: el.attr("src").ifBlank { el.attr("data-src") }.trim()
+                    val src = ImageResolver.extractFromHtml(el.outerHtml())
+                        ?: ImageResolver.extractBestImageUrlFromElement(el)
+                        ?: el.attr("src").ifBlank { el.attr("data-src") }.trim()
                     val alt = el.attr("alt").trim()
-                    if (src.isNotBlank() && !src.startsWith("data:") && seenImages.add(src)) {
+                    if (!src.isNullOrBlank() && !src.startsWith("data:") && seenImages.add(src)) {
                         blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
                     }
                     processedElements.add(el)

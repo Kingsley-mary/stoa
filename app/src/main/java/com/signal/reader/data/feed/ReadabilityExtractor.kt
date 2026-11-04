@@ -68,7 +68,7 @@ object ReadabilityExtractor {
                     val urlRegex = Regex("""https?:\\?/\\?/[^"'\s\\]+\.(?:jpg|jpeg|png|webp)(?:\?[^"'\s\\]*)?""", RegexOption.IGNORE_CASE)
                     val matches = urlRegex.findAll(dataImages)
                         .map { it.value.replace("\\/", "/").replace("&amp;", "&") }
-                        .filter { !ImageResolver.isTrackingUrl(it) }
+                        .filter { ImageResolver.isLikelyContentImage(it) }
                         .distinct()
                         .toList()
                     for (imgUrl in matches.take(30)) {
@@ -77,25 +77,52 @@ object ReadabilityExtractor {
                 }
             }
 
-            // 3. Promote picture tags and lazy loaded image attributes (data-src, data-img-url, data-orig-file, srcset) to primary src
-            doc.select("picture").forEach { picture ->
-                val bestSrcset = picture.select("source[srcset]").mapNotNull {
-                    ImageResolver.extractHighestResFromSrcset(it.attr("srcset"))
-                }.firstOrNull()
-                if (!bestSrcset.isNullOrBlank()) {
+            // 3. Capture dedicated top-level article galleries (Hypebeast lookbooks, sliders, carousels)
+            // BEFORE narrowing down to the single text container
+            val galleryImageUrls = mutableListOf<String>()
+            doc.select(
+                ".post-body-gallery, .post-gallery, .post-body-image, .gallery-carousel, " +
+                ".gallery-slider, .swiper-wrapper, .wp-block-gallery, [data-gallery], figure.gallery-item"
+            ).forEach { galleryEl ->
+                // Promote any <picture><source> inside the gallery first
+                galleryEl.select("picture").forEach { picture ->
+                    val bestSourceUrl = picture.select("source")
+                        .mapNotNull { source ->
+                            val srcset = source.attr("data-srcset").ifBlank { source.attr("srcset") }
+                            ImageResolver.extractBestUrlFromSrcset(srcset)
+                        }
+                        .firstOrNull()
                     val img = picture.selectFirst("img")
-                    if (img != null) {
-                        img.attr("src", bestSrcset)
-                    } else {
-                        picture.append("<img src=\"$bestSrcset\" alt=\"Article Image\" />")
+                    if (bestSourceUrl != null) {
+                        val resolved = ImageResolver.resolveAndSanitize(bestSourceUrl, url) ?: bestSourceUrl
+                        if (img != null) {
+                            val existingSrc = img.attr("src").trim()
+                            if (existingSrc.isEmpty() || existingSrc.startsWith("data:")) {
+                                img.attr("src", resolved)
+                            }
+                        } else {
+                            picture.appendElement("img").attr("src", resolved)
+                        }
                     }
                 }
-            }
 
-            doc.select("img").forEach { img ->
-                val bestUrl = ImageResolver.extractBestImageUrlFromElement(img)
-                if (!bestUrl.isNullOrBlank()) {
-                    img.attr("src", bestUrl)
+                galleryEl.select("img").forEach { img ->
+                    val rawSrc = img.attr("data-lazy-src")
+                        .ifBlank { img.attr("data-src") }
+                        .ifBlank { img.attr("data-lazy") }
+                        .ifBlank { img.attr("data-original") }
+                        .ifBlank {
+                            val srcset = img.attr("data-srcset").ifBlank { img.attr("srcset") }
+                            ImageResolver.extractBestUrlFromSrcset(srcset) ?: ""
+                        }
+                        .ifBlank { img.attr("src") }
+
+                    val resolved = ImageResolver.resolveAndSanitize(rawSrc, url)
+                    if (resolved != null && ImageResolver.isLikelyContentImage(resolved)) {
+                        if (!galleryImageUrls.contains(resolved)) {
+                            galleryImageUrls.add(resolved)
+                        }
+                    }
                 }
             }
 
@@ -105,31 +132,16 @@ object ReadabilityExtractor {
             val leadFeatureImg = leadFeatureEl?.selectFirst("img")?.let { ImageResolver.extractBestImageUrlFromElement(it) }
             val bgHeaderMatch = Regex("""background-image:\s*url\(['"]?([^'"\)]+)['"]?\)""", RegexOption.IGNORE_CASE)
                 .find(doc.select("header[style*=background-image], div[style*=background-image]").attr("style"))
-            val bgHeaderUrl = bgHeaderMatch?.groupValues?.get(1)?.let { ImageResolver.cleanUrl(it) }?.takeIf { !ImageResolver.isTrackingUrl(it) }
+            val bgHeaderUrl = bgHeaderMatch?.groupValues?.get(1)?.let { ImageResolver.cleanUrl(it) }?.takeIf { ImageResolver.isLikelyContentImage(it) }
             val effectiveLeadCover = leadFeatureImg ?: leadOgImage ?: bgHeaderUrl
 
-            // 5. Strip non-content iframes, keeping YouTube, Vimeo, Twitch, Spotify, and social embeds (Twitter, Instagram, Bluesky, TikTok)
-            doc.select("iframe").forEach { iframe ->
-                val src = iframe.attr("src").lowercase()
-                val isSocialOrVideo = src.contains("youtube") || src.contains("youtu.be") ||
-                              src.contains("vimeo") || src.contains("player.vimeo") ||
-                              src.contains("twitch") || src.contains("embed") ||
-                              src.contains("spotify") ||
-                              src.contains("twitter") || src.contains("x.com") ||
-                              src.contains("instagram") || src.contains("tiktok") ||
-                              src.contains("reddit") || src.contains("bluesky") ||
-                              src.contains("threads")
-                if (!isSocialOrVideo) {
-                    iframe.remove()
-                }
-            }
+            // 5. Strip clutter elements
+            doc.select("script, style, noscript, header, footer, nav, aside, .advertisement, .social-share, .cookie-banner, .newsletter-signup").remove()
 
-            // Strip clutter elements
-            doc.select("script, style, noscript, header, footer, nav, aside, .ad, .advertisement, .social-share, .cookie-banner, .newsletter-signup").remove()
-
-            // Find best content candidate
+            // 6. Find best content candidate
             val candidateSelectors = listOf(
                 "article",
+                ".duet--article--article-body-component",
                 "[itemprop='articleBody']",
                 ".article__body",
                 ".article-body",
@@ -141,27 +153,110 @@ object ReadabilityExtractor {
                 "main"
             )
 
-            var bestContainer = candidateSelectors
+            var bestElement = candidateSelectors
                 .mapNotNull { doc.selectFirst(it) }
                 .firstOrNull { it.select("p").size >= 2 }
 
-            if (bestContainer == null) {
-                // Heuristic: container with the most paragraph text
-                bestContainer = doc.body().select("div, section")
+            if (bestElement == null) {
+                bestElement = doc.body().select("div, section")
                     .maxByOrNull { it.select("p").sumOf { p -> p.text().length } }
             }
 
-            // If a lead cover image was discovered outside bestContainer, prepend it as a lead figure
-            if (bestContainer != null && !effectiveLeadCover.isNullOrBlank()) {
-                val cleanLead = ImageResolver.resolveHighRes(effectiveLeadCover) ?: effectiveLeadCover
-                val existingImgs = bestContainer.select("img").map { ImageResolver.extractBestImageUrlFromElement(it) ?: it.attr("src") }
-                val leadBase = cleanLead.substringBefore("?").trimEnd('/')
-                if (existingImgs.none { it.contains(leadBase) }) {
-                    bestContainer.prepend("<figure class=\"lead-hero-figure\"><img src=\"$cleanLead\" alt=\"Lead Article Cover\" /></figure>")
+            if (bestElement != null) {
+                // Promote all <picture> elements so <source srcset> URL is copied into <img src="...">
+                bestElement.select("picture").forEach { picture ->
+                    val bestSourceUrl = picture.select("source")
+                        .mapNotNull { source ->
+                            val type = source.attr("type").lowercase()
+                            if (type.isNotEmpty() && !type.startsWith("image/")) return@mapNotNull null
+                            val srcset = source.attr("data-srcset").ifBlank { source.attr("srcset") }
+                            ImageResolver.extractBestUrlFromSrcset(srcset)
+                        }
+                        .firstOrNull()
+
+                    val img = picture.selectFirst("img")
+                    if (bestSourceUrl != null) {
+                        val resolved = ImageResolver.resolveAndSanitize(bestSourceUrl, url) ?: bestSourceUrl
+                        if (img != null) {
+                            val existingSrc = img.attr("src").trim()
+                            if (existingSrc.isEmpty() || existingSrc.startsWith("data:")) {
+                                img.attr("src", resolved)
+                            }
+                        } else {
+                            picture.appendElement("img").attr("src", resolved)
+                        }
+                    }
                 }
+
+                // Clean and sanitize <img> tags
+                bestElement.select("img").forEach { img ->
+                    val width = img.attr("width").toIntOrNull()
+                    val height = img.attr("height").toIntOrNull()
+
+                    val rawSrc = img.attr("data-lazy-src")
+                        .ifBlank { img.attr("data-src") }
+                        .ifBlank { img.attr("data-original") }
+                        .ifBlank { img.attr("data-actualsrc") }
+                        .ifBlank { img.attr("data-hi-res-src") }
+                        .ifBlank {
+                            val srcset = img.attr("data-srcset").ifBlank { img.attr("srcset") }
+                            ImageResolver.extractBestUrlFromSrcset(srcset) ?: ""
+                        }
+                        .ifBlank { img.attr("src") }
+
+                    val resolved = ImageResolver.resolveAndSanitize(rawSrc, url)
+                    if (resolved == null || !ImageResolver.isLikelyContentImage(resolved, width, height)) {
+                        img.remove()
+                    } else {
+                        img.attr("src", resolved)
+                        img.removeAttr("srcset")
+                        img.removeAttr("data-src")
+                        img.removeAttr("data-srcset")
+                        img.removeAttr("data-lazy-src")
+                        img.removeAttr("loading")
+                    }
+                }
+
+                // For video embeds (iframe), before removing iframe tags, convert YouTube/Vimeo iframes into a link block
+                bestElement.select("iframe").forEach { iframe ->
+                    val src = iframe.attr("src").ifBlank { iframe.attr("data-src") }
+                    if (src.contains("youtube.com") || src.contains("youtu.be") || src.contains("vimeo.com")) {
+                        val cleanSrc = if (src.startsWith("//")) "https:$src" else src
+                        iframe.after("<p><a href=\"$cleanSrc\">Watch embedded video</a></p>")
+                    }
+                    iframe.remove()
+                }
+
+                val inBodyUrls = bestElement.select("img")
+                    .mapNotNull { it.attr("src").takeIf { s -> s.isNotBlank() } }
+                    .toSet()
+
+                val galleryHtmlPrefix = buildString {
+                    for (gUrl in galleryImageUrls) {
+                        if (gUrl !in inBodyUrls) {
+                            append("<p><img src=\"$gUrl\" /></p>\n")
+                        }
+                    }
+                }
+
+                // If a lead cover image was discovered outside bestElement, prepend it as a lead figure
+                val finalLeadImage = effectiveLeadCover
+                    ?: galleryImageUrls.firstOrNull()
+                    ?: inBodyUrls.firstOrNull()
+
+                if (!finalLeadImage.isNullOrBlank()) {
+                    val cleanLead = ImageResolver.resolveHighRes(finalLeadImage) ?: finalLeadImage
+                    val leadBase = cleanLead.substringBefore("?").trimEnd('/')
+                    if (inBodyUrls.none { it.contains(leadBase) } && galleryImageUrls.none { it.contains(leadBase) }) {
+                        bestElement.prepend("<figure class=\"lead-hero-figure\"><img src=\"$cleanLead\" alt=\"Lead Article Cover\" /></figure>")
+                    }
+                }
+
+                val finalHtml = (galleryHtmlPrefix + bestElement.html()).trim()
+                return@withContext finalHtml.takeIf { it.isNotBlank() }
             }
 
-            bestContainer?.html()?.takeIf { it.isNotBlank() }
+            null
         } catch (_: Exception) {
             null
         }

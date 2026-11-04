@@ -2,6 +2,7 @@ package com.signal.reader.data.feed
 
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.net.URI
 import java.util.Locale
 
 data class MediaCandidate(
@@ -14,48 +15,253 @@ data class MediaCandidate(
 
 object ImageResolver {
 
-    private val trackingKeywords = listOf(
-        "1x1", "pixel", "tracker", "beacon", "stat.gif", "analytics",
-        "feedburner", "avatar", "badge", "emoji", "site-logo", "brand-logo",
-        "header-logo", "footer-logo", "placeholder", "spacer", "blank.gif", "transparent.gif"
+    // Match banned tokens ONLY on path/filename word boundaries so slugs like "pixel", "silicon", "iconic", or "uploads" are never blocked
+    private val BANNED_PATH_SEGMENT_REGEX = Regex(
+        """(?:^|[/_.-])(avatar|favicon|tracker|1x1|spacer|gravatar|feedburner|doubleclick|emoji|smiley|site-?logo|brand-?logo|header-?logo|footer-?logo)(?:[/_.-]|$)""",
+        RegexOption.IGNORE_CASE
     )
 
-    private val wpThumbnailRegex = Regex("""-\d{2,4}x\d{2,4}(\.[a-zA-Z]{3,4}(?:\?.*)?)$""", RegexOption.IGNORE_CASE)
-    private val substackWidthRegex = Regex("""w_\d+""")
-    private val mediumWidthRegex = Regex("""/max/\d+/""")
+    // Only strip analytics/tracking parameters; preserve CDN image sizing/cropping params (w, h, crop, fit, resize, quality)
+    private val STRIP_PARAMS = setOf(
+        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"
+    )
 
-    /**
-     * Unescapes HTML hex & named entities often present in meta tags and URLs.
-     */
-    fun cleanUrl(raw: String?): String {
-        if (raw.isNullOrBlank()) return ""
-        var s = raw.trim().trim('"', '\'')
-        return s.replace("&amp;", "&")
+    private val IMG_TAG_REGEX = Regex("""<img\b[^>]*>""", RegexOption.IGNORE_CASE)
+    private val SOURCE_TAG_REGEX = Regex("""<source\b[^>]*>""", RegexOption.IGNORE_CASE)
+    private val ATTR_WIDTH_REGEX = Regex("""\bwidth\s*=\s*["']?(\d+)""", RegexOption.IGNORE_CASE)
+    private val ATTR_HEIGHT_REGEX = Regex("""\bheight\s*=\s*["']?(\d+)""", RegexOption.IGNORE_CASE)
+    private val ytEmbedRegex = Regex("""(?:youtube(?:-nocookie)?\.com/(?:embed/|v/|watch\?v=)|youtu\.be/)([a-zA-Z0-9_-]{11})""", RegexOption.IGNORE_CASE)
+
+    fun extractFromHtml(html: String?, baseUrl: String? = null): String? {
+        return extractAllFromHtml(html, baseUrl).firstOrNull()
+    }
+
+    fun extractAllFromHtml(html: String?, baseUrl: String? = null): List<String> {
+        if (html.isNullOrBlank()) return emptyList()
+        val results = mutableListOf<String>()
+
+        for (match in IMG_TAG_REGEX.findAll(html)) {
+            val tag = match.value
+            val width = ATTR_WIDTH_REGEX.find(tag)?.groupValues?.get(1)?.toIntOrNull()
+            val height = ATTR_HEIGHT_REGEX.find(tag)?.groupValues?.get(1)?.toIntOrNull()
+
+            val rawUrl = extractAttr(tag, "data-lazy-src")
+                ?: extractAttr(tag, "data-src")
+                ?: extractAttr(tag, "data-original")
+                ?: extractAttr(tag, "data-actualsrc")
+                ?: extractAttr(tag, "data-hi-res-src")
+                ?: extractAttr(tag, "data-srcset")?.let { extractBestUrlFromSrcset(it) }
+                ?: extractAttr(tag, "srcset")?.let { extractBestUrlFromSrcset(it) }
+                ?: extractAttr(tag, "src")?.takeUnless { it.trim().startsWith("data:") }
+
+            if (rawUrl != null) {
+                val resolved = resolveAndSanitize(rawUrl, baseUrl)
+                if (resolved != null && isLikelyContentImage(resolved, width, height)) {
+                    if (!results.contains(resolved)) {
+                        results.add(resolved)
+                    }
+                }
+            }
+        }
+
+        // Also check <source srcset="..."> inside <picture> tags (used by Polygon)
+        for (match in SOURCE_TAG_REGEX.findAll(html)) {
+            val tag = match.value
+            val type = extractAttr(tag, "type")?.lowercase()
+            if (type != null && !type.startsWith("image/")) continue
+
+            val srcset = extractAttr(tag, "data-srcset") ?: extractAttr(tag, "srcset") ?: continue
+            val rawUrl = extractBestUrlFromSrcset(srcset)
+            if (rawUrl != null) {
+                val resolved = resolveAndSanitize(rawUrl, baseUrl)
+                if (resolved != null && isLikelyContentImage(resolved)) {
+                    if (!results.contains(resolved)) {
+                        results.add(resolved)
+                    }
+                }
+            }
+        }
+
+        return results
+    }
+
+    fun extractMetaImage(html: String?, baseUrl: String? = null): String? {
+        if (html.isNullOrBlank()) return null
+
+        val metaKeys = listOf(
+            "og:image:secure_url",
+            "og:image:url",
+            "og:image",
+            "twitter:image:src",
+            "twitter:image"
+        )
+
+        val metaTags = Regex("""<meta\b[^>]*>""", RegexOption.IGNORE_CASE).findAll(html)
+        for (key in metaKeys) {
+            for (match in metaTags) {
+                val tag = match.value
+                val prop = extractAttr(tag, "property")?.lowercase()
+                    ?: extractAttr(tag, "name")?.lowercase()
+                    ?: extractAttr(tag, "itemprop")?.lowercase()
+                if (prop == key) {
+                    val content = extractAttr(tag, "content")
+                    if (!content.isNullOrBlank()) {
+                        val resolved = resolveAndSanitize(content, baseUrl)
+                        if (resolved != null && isLikelyContentImage(resolved)) {
+                            return resolved
+                        }
+                    }
+                }
+            }
+        }
+
+        return null
+    }
+
+    fun isLikelyContentImage(url: String, width: Int? = null, height: Int? = null): Boolean {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return false
+        val lower = trimmed.lowercase(Locale.ROOT)
+        if (lower.startsWith("data:")) return false
+        if (lower.endsWith(".svg") || lower.contains(".svg?")) return false
+
+        if (width != null && width in 1..99) return false
+        if (height != null && height in 1..99) return false
+
+        if (lower.contains("doubleclick.net") ||
+            lower.contains("feedburner.com") ||
+            lower.contains("gravatar.com") ||
+            lower.contains("s.w.org/images/core/emoji")
+        ) {
+            return false
+        }
+
+        val pathOnly = lower.substringBefore('?')
+        // Explicitly allow clean artwork that indicates absence of watermark logos (e.g. Polygon key art ending in -no-logo.jpg)
+        if (pathOnly.contains("no-logo") || pathOnly.contains("nologo")) return true
+        if (BANNED_PATH_SEGMENT_REGEX.containsMatchIn(pathOnly)) return false
+        if (Regex("""(?:^|[/_])(?:logo|icon)\.(?:png|jpe?g|gif|webp)""").containsMatchIn(pathOnly)) return false
+
+        return true
+    }
+
+    fun resolveAndSanitize(rawUrl: String?, baseUrl: String? = null): String? {
+        if (rawUrl.isNullOrBlank()) return null
+        var cleaned = decodeHtmlEntities(rawUrl.trim())
+        if (cleaned.startsWith("data:")) return null
+
+        cleaned = when {
+            cleaned.startsWith("//") -> "https:$cleaned"
+            cleaned.startsWith("http://") || cleaned.startsWith("https://") -> cleaned
+            !baseUrl.isNullOrBlank() -> {
+                try {
+                    URI(baseUrl).resolve(cleaned).toString()
+                } catch (_: Exception) {
+                    cleaned
+                }
+            }
+            else -> cleaned
+        }
+
+        return sanitizeImageUrl(cleaned)
+    }
+
+    fun sanitizeImageUrl(url: String): String {
+        var result = decodeHtmlEntities(url.trim())
+        if (result.startsWith("//")) {
+            result = "https:$result"
+        } else if (result.startsWith("http://")) {
+            result = "https://" + result.removePrefix("http://")
+        }
+
+        val qIndex = result.indexOf('?')
+        if (qIndex != -1) {
+            val base = result.substring(0, qIndex)
+            val query = result.substring(qIndex + 1)
+            val keptParams = query.split('&').filter { param ->
+                val key = param.substringBefore('=').lowercase()
+                key.isNotEmpty() && key !in STRIP_PARAMS
+            }
+            result = if (keptParams.isEmpty()) base else "$base?${keptParams.joinToString("&")}"
+        }
+
+        return result
+    }
+
+    fun decodeHtmlEntities(input: String): String {
+        return input
+            .replace("&amp;", "&")
+            .replace("&#038;", "&")
+            .replace("&#38;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
             .replace("&#x3A;", ":", ignoreCase = true)
             .replace("&#x2F;", "/", ignoreCase = true)
             .replace("&#x3F;", "?", ignoreCase = true)
             .replace("&#x3D;", "=", ignoreCase = true)
             .replace("&#x20;", " ", ignoreCase = true)
             .replace("&#x25;", "%", ignoreCase = true)
-            .replace("&#38;", "&")
             .replace("&#58;", ":")
             .replace("&#47;", "/")
             .replace("&#63;", "?")
             .replace("&#61;", "=")
-            .trim()
     }
 
+    private fun extractAttr(tag: String, attrName: String): String? {
+        val regex = Regex("""\b$attrName\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))""", RegexOption.IGNORE_CASE)
+        val match = regex.find(tag) ?: return null
+        val value = match.groups[1]?.value ?: match.groups[2]?.value ?: match.groups[3]?.value
+        return value?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    fun extractFirstUrlFromSrcset(srcset: String): String? = extractBestUrlFromSrcset(srcset)
+
     /**
-     * Upgrades an image URL from low-res/thumbnail to its full-resolution counterpart.
+     * Safely parses a srcset attribute even when individual URLs contain commas in query params
+     * (e.g. Polygon's ?crop=0,0,100,100&w=1200 1200w, https://... 800w).
      */
+    fun extractBestUrlFromSrcset(srcset: String): String? {
+        val decoded = decodeHtmlEntities(srcset).trim()
+        if (decoded.isEmpty()) return null
+
+        // Split only on commas that separate candidates (avoiding commas within URL query params like ?crop=0,0,100,100)
+        val entries = decoded.split(Regex(""",\s*(?=https?://|//|/|[^\s,]+(?:\s+\d+[wx]|\s*$))"""))
+        var bestUrl: String? = null
+        var maxWidth = -1
+
+        for (entry in entries) {
+            val parts = entry.trim().split(Regex("""\s+"""))
+            val url = parts.firstOrNull()?.trim()?.trimEnd(',') ?: continue
+            if (url.isEmpty() || url.startsWith("data:")) continue
+
+            val descriptor = parts.getOrNull(1)?.lowercase() ?: ""
+            val width = when {
+                descriptor.endsWith("w") -> descriptor.dropLast(1).toIntOrNull() ?: 0
+                descriptor.endsWith("x") -> ((descriptor.dropLast(1).toFloatOrNull() ?: 1f) * 1000).toInt()
+                else -> 0
+            }
+
+            if (width >= maxWidth) {
+                maxWidth = width
+                bestUrl = url
+            }
+        }
+        return bestUrl
+    }
+
+    fun cleanUrl(raw: String?): String {
+        if (raw.isNullOrBlank()) return ""
+        return decodeHtmlEntities(raw.trim().trim('"', '\''))
+    }
+
+    fun isTrackingUrl(url: String): Boolean = !isLikelyContentImage(url)
+
     fun resolveHighRes(rawUrl: String?): String? {
         if (rawUrl.isNullOrBlank()) return null
-        var url = cleanUrl(rawUrl)
-
-        // Ignore tracking pixels and data URIs
-        if (url.startsWith("data:", ignoreCase = true) || isTrackingUrl(url)) {
-            return null
-        }
+        var url = resolveAndSanitize(rawUrl) ?: cleanUrl(rawUrl)
+        if (!isLikelyContentImage(url)) return null
 
         // YouTube thumbnails: upgrade hqdefault -> maxresdefault
         if (url.contains("img.youtube.com/vi/") || url.contains("i.ytimg.com/vi/")) {
@@ -66,6 +272,7 @@ object ImageResolver {
 
         // Substack: upgrade image fetch width to 1456
         if (url.contains("substack-post-media") || url.contains("bucketeer-") || url.contains("image/fetch/")) {
+            val substackWidthRegex = Regex("""w_\d+""")
             if (substackWidthRegex.containsMatchIn(url)) {
                 url = substackWidthRegex.replace(url, "w_1456")
             }
@@ -73,20 +280,16 @@ object ImageResolver {
 
         // Medium: upgrade max width to 2000
         if (url.contains("miro.medium.com") || url.contains("cdn-images-1.medium.com")) {
+            val mediumWidthRegex = Regex("""/max/\d+/""")
             if (mediumWidthRegex.containsMatchIn(url)) {
                 url = mediumWidthRegex.replace(url, "/max/2000/")
             }
         }
 
-        // WordPress / Jetpack / Photon thumbnail strip: e.g. -300x200.jpg -> .jpg
+        // WordPress / Jetpack / Photon thumbnail strip: e.g. -300x200.jpg -> .jpg (only if not an aspect crop query)
+        val wpThumbnailRegex = Regex("""-\d{2,4}x\d{2,4}(\.[a-zA-Z]{3,4}(?:\?.*)?)$""", RegexOption.IGNORE_CASE)
         if (wpThumbnailRegex.containsMatchIn(url)) {
             url = wpThumbnailRegex.replace(url, "$1")
-        }
-
-        // WordPress Photon CDN: upgrade constrained width
-        if (url.contains("i0.wp.com") || url.contains("i1.wp.com") || url.contains("i2.wp.com")) {
-            url = url.replace(Regex("""([?&])w=\d+"""), "$1w=1600")
-                .replace(Regex("""([?&])resize=\d+,\d+"""), "$1resize=1600,1067")
         }
 
         // Creative Boom CDN: upgrade medium/small to large webp
@@ -98,18 +301,14 @@ object ImageResolver {
         return url
     }
 
-    /**
-     * Selects the highest resolution media item from RSS/Atom tags.
-     */
     fun selectBestMediaCandidate(candidates: List<MediaCandidate>): String? {
         if (candidates.isEmpty()) return null
 
         val valid = candidates
-            .map { it.copy(url = it.url.replace("&amp;", "&").trim('"', '\'')) }
-            .filter { !isTrackingUrl(it.url) }
+            .map { it.copy(url = cleanUrl(it.url)) }
+            .filter { isLikelyContentImage(it.url) }
         if (valid.isEmpty()) return null
 
-        // Priority: non-thumbnail candidates with largest width > height > filesize
         val sorted = valid.sortedWith(
             compareByDescending<MediaCandidate> { !it.isThumbnail }
                 .thenByDescending { it.width }
@@ -120,33 +319,11 @@ object ImageResolver {
         return resolveHighRes(sorted.first().url)
     }
 
-    private val ytEmbedRegex = Regex("""(?:youtube(?:-nocookie)?\.com/(?:embed/|v/|watch\?v=)|youtu\.be/)([a-zA-Z0-9_-]{11})""", RegexOption.IGNORE_CASE)
-
-    /**
-     * Extracts the highest quality image from an HTML Document, inspecting picture/srcset,
-     * img tags, embedded video posters (e.g. YouTube, HTML5), and gallery containers.
-     */
     fun extractBestImageFromHtml(doc: Document): String? {
-        // 1. Picture source tags
-        val pictureSources = doc.select("picture source[srcset]")
-        for (source in pictureSources) {
-            val srcset = source.attr("srcset")
-            val bestUrl = extractHighestResFromSrcset(srcset)
-            if (!bestUrl.isNullOrBlank() && !isTrackingUrl(bestUrl)) {
-                return resolveHighRes(bestUrl)
-            }
-        }
+        val extracted = extractFromHtml(doc.html())
+        if (!extracted.isNullOrBlank()) return extracted
 
-        // 2. Standard <img> elements
-        val imgElements = doc.select("img")
-        for (el in imgElements) {
-            val candidate = extractBestImageUrlFromElement(el)
-            if (candidate != null && !isTrackingUrl(candidate)) {
-                return resolveHighRes(candidate)
-            }
-        }
-
-        // 3. Embedded video iframes / objects (e.g. YouTube trailers/interviews)
+        // Embedded video iframes / objects
         val iframes = doc.select("iframe[src], embed[src]")
         for (iframe in iframes) {
             val src = iframe.attr("src")
@@ -156,35 +333,18 @@ object ImageResolver {
             }
         }
 
-        // 4. HTML5 video poster tags
+        // HTML5 video poster tags
         val videoPosters = doc.select("video[poster]")
         for (v in videoPosters) {
             val poster = cleanUrl(v.attr("poster"))
-            if (poster.isNotBlank() && !poster.startsWith("data:") && !isTrackingUrl(poster)) {
+            if (poster.isNotBlank() && !poster.startsWith("data:") && isLikelyContentImage(poster)) {
                 return resolveHighRes(poster)
-            }
-        }
-
-        // 5. Gallery containers with data-images or JSON (e.g. Hypebeast, WordPress galleries)
-        val galleryElements = doc.select("[data-images]")
-        for (gallery in galleryElements) {
-            val dataImages = gallery.attr("data-images")
-            val urlRegex = Regex("""https?:\\?/\\?/[^"'\s\\]+\.(?:jpg|jpeg|png|webp)(?:\?[^"'\s\\]*)?""", RegexOption.IGNORE_CASE)
-            val match = urlRegex.find(dataImages)
-            if (match != null) {
-                val galleryUrl = cleanUrl(match.value.replace("\\/", "/"))
-                if (!isTrackingUrl(galleryUrl)) {
-                    return resolveHighRes(galleryUrl)
-                }
             }
         }
 
         return null
     }
 
-    /**
-     * Extracts a high-res video thumbnail from video embeds like YouTube.
-     */
     fun extractVideoThumbnail(src: String?): String? {
         if (src.isNullOrBlank()) return null
         val match = ytEmbedRegex.find(src)
@@ -195,33 +355,12 @@ object ImageResolver {
         return null
     }
 
-    /**
-     * Extracts OpenGraph or Twitter Card image from HTML document.
-     */
     fun extractOpenGraphImage(doc: Document): String? {
-        val ogSelectors = listOf(
-            "meta[property=og:image:secure_url]",
-            "meta[property=og:image]",
-            "meta[name=og:image]",
-            "meta[name=twitter:image]",
-            "meta[name=twitter:image:src]",
-            "meta[property=twitter:image]"
-        )
-
-        for (selector in ogSelectors) {
-            val raw = doc.select(selector).attr("content").trim()
-            val content = cleanUrl(raw)
-            if (content.isNotBlank() && !content.startsWith("data:") && !isTrackingUrl(content)) {
-                return resolveHighRes(content)
-            }
-        }
+        val og = extractMetaImage(doc.html())
+        if (!og.isNullOrBlank()) return og
         return null
     }
 
-    /**
-     * Resolves the effective cover image: returns imageUrl if present,
-     * or falls back to extracting the first valid content image from fullContent or excerpt HTML.
-     */
     fun getEffectiveCoverImage(imageUrl: String?, fullContent: String?, excerpt: String?): String? {
         if (!imageUrl.isNullOrBlank() && imageUrl != "none") return imageUrl
         if (!fullContent.isNullOrBlank()) {
@@ -235,96 +374,22 @@ object ImageResolver {
         return null
     }
 
-    /**
-     * Extracts high-resolution URL from an <img> element, prioritizing srcset, data-orig-file, and data-src.
-     */
     fun extractBestImageUrlFromElement(el: Element): String? {
-        // Check srcset / data-srcset first
-        val srcset = el.attr("srcset").ifBlank { el.attr("data-srcset") }
-        if (srcset.isNotBlank()) {
-            val bestFromSrcset = extractHighestResFromSrcset(srcset)
-            if (!bestFromSrcset.isNullOrBlank()) {
-                return bestFromSrcset
-            }
-        }
+        val fromHtml = extractFromHtml(el.outerHtml())
+        if (!fromHtml.isNullOrBlank()) return fromHtml
 
-        // Check if inside a <picture> element with <source srcset>
         val parentPicture = el.parent()?.takeIf { it.tagName().equals("picture", ignoreCase = true) }
         if (parentPicture != null) {
-            for (source in parentPicture.select("source[srcset]")) {
-                val best = extractHighestResFromSrcset(source.attr("srcset"))
-                if (!best.isNullOrBlank() && !isTrackingUrl(best)) {
-                    return best
+            for (source in parentPicture.select("source")) {
+                val srcset = source.attr("data-srcset").ifBlank { source.attr("srcset") }
+                val best = extractBestUrlFromSrcset(srcset)
+                if (!best.isNullOrBlank() && isLikelyContentImage(best)) {
+                    return resolveAndSanitize(best) ?: best
                 }
             }
         }
-
-        // Check high-res data attributes common in modern CMSs (WordPress, Vox/Polygon, Hypebeast, Substack)
-        val candidateAttrs = listOf(
-            "data-orig-file",
-            "data-large-file",
-            "data-full-url",
-            "data-src-large",
-            "data-img-url",
-            "data-flickity-lazyload-src",
-            "data-src",
-            "data-lazy-src",
-            "abs:src",
-            "src"
-        )
-
-        for (attr in candidateAttrs) {
-            val value = cleanUrl(el.attr(attr))
-            if (value.isNotBlank() && !value.startsWith("data:") && !isTrackingUrl(value)) {
-                return value
-            }
-        }
-
         return null
     }
 
-    /**
-     * Parses an HTML srcset string (e.g. "url1 400w, url2 1200w, url3 2048w") and picks the URL with largest width.
-     */
-    fun extractHighestResFromSrcset(srcset: String): String? {
-        try {
-            val entries = srcset.split(",")
-            var maxW = 0
-            var bestUrl: String? = null
-
-            for (entry in entries) {
-                val parts = entry.trim().split(Regex("""\s+"""))
-                if (parts.isNotEmpty()) {
-                    val candidateUrl = cleanUrl(parts[0])
-                    if (isTrackingUrl(candidateUrl)) continue
-
-                    val descriptor = if (parts.size > 1) parts[1].lowercase(Locale.ROOT) else ""
-                    val width = descriptor.removeSuffix("w").toIntOrNull() ?: 0
-
-                    if (width > maxW) {
-                        maxW = width
-                        bestUrl = candidateUrl
-                    } else if (bestUrl == null) {
-                        bestUrl = candidateUrl
-                    }
-                }
-            }
-            return bestUrl
-        } catch (_: Exception) {
-            return null
-        }
-    }
-
-    fun isTrackingUrl(url: String): Boolean {
-        val lower = url.lowercase(Locale.ROOT)
-        // Explicitly allow clean artwork that indicates absence of watermark logos (e.g. Polygon key art ending in -no-logo.jpg)
-        if (lower.contains("no-logo") || lower.contains("nologo")) return false
-        if (lower.endsWith(".svg") || lower.contains(".svg?") || lower.contains("/svg/")) return true
-        if (trackingKeywords.any { lower.contains(it) }) return true
-        // Standalone logos or icons (e.g. /logo.png, _logo.jpg, /icon.png, favicon) without false-positive matching on words like iconic or monologue
-        if (Regex("""(?:^|[/_-])(?:site-?logo|brand-?logo|favicon|apple-touch-icon)(?:[/._-]|\.[a-z]{3,4})""").containsMatchIn(lower)) return true
-        if (Regex("""(?:^|[/_])logo\.(?:png|jpe?g|gif|webp)""").containsMatchIn(lower)) return true
-        if (Regex("""(?:^|[/_])icon\.(?:png|jpe?g|gif|webp)""").containsMatchIn(lower)) return true
-        return false
-    }
+    fun extractHighestResFromSrcset(srcset: String): String? = extractBestUrlFromSrcset(srcset)
 }

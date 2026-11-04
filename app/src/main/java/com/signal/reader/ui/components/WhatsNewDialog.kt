@@ -37,8 +37,31 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.17",
+        version = "v1.4.18",
         isCurrent = true,
+        summary = "In-App Update Pop-Up Installer Launch, Polygon Media & Extraction, Hypebeast Galleries, and 256KB Head Crawl",
+        markdownNotes = """
+### In-App Update Dialog Fix
+- **Direct Activity Launch**: UpdateDialog now observes the download reaching 100% and auto-launches the system Package Installer via Activity context (MainActivity), bypassing Android 11–16 Background Activity Launch blocks.
+- **Install Update Button**: Added an explicit "Install Update" button fallback inside the update dialog so users can tap to install without getting stranded.
+- **Installer Task Affinity**: Removed `FLAG_ACTIVITY_CLEAR_TOP` from package installer intents to prevent system package installer tasks from silently aborting.
+
+### Polygon Media & Article Extraction
+- **Word-Boundary Path Filtering**: Replaced substring image filters with path segment regex to ensure gaming/tech articles with keywords like "pixel", "iconic", or WordPress "/uploads/" are never dropped.
+- **Comma-Safe Srcset Parsing**: Added lookahead srcset splitting so Polygon query parameters with commas (e.g. `?crop=0,0,100,100`) are parsed accurately without slicing the URL.
+- **Picture & Source Promotion**: In readability extraction, `<picture><source srcset="...">` tags are promoted to full image tags and sanitized with boundary checks.
+- **Embedded Video Preserved**: Embedded YouTube and Vimeo iframes are converted to native fallback player links instead of being dropped.
+
+### Hypebeast Photo Galleries & Feed Images
+- **Separate Lookbook Galleries**: Extracted lookbooks, product sliders, and carousels placed outside text containers (`.post-body-gallery`, `.swiper-wrapper`, `.post-gallery`) and integrated them directly into extracted stories.
+- **Clean CDN Headers**: Added clean mobile browser headers (`User-Agent` and `Accept`) and removed hotlink-blocking referrers in Coil image requests.
+- **256 KB Head Buffer**: Increased metadata crawler buffer from 32 KB to 256 KB to reliably extract OpenGraph covers past large inlined scripts and styles.
+- **Auto-Retry Failed Images**: Reset failed `"none"` image statuses on feed refresh so existing cards immediately re-crawl missing cover images.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.17",
+        isCurrent = false,
         summary = "Polygon & Hypebeast Image Fixes, Spotify & Instagram Embeds, Link Separation, and Settings Markdown",
         markdownNotes = """
 ### Polygon & Hypebeast Visual Media
