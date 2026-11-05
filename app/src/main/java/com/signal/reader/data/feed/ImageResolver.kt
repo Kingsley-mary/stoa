@@ -118,20 +118,27 @@ object ImageResolver {
         return null
     }
 
+    /**
+     * Filters out tracking pixels, tiny icons, avatars, data URIs, and SVGs.
+     * NOTE: Only reject small width/height (1..48) if the URL itself looks like an icon/pixel/avatar
+     * and does NOT come from a lazy-load/srcset attribute, because sites like Polygon & Hypebeast
+     * put width="1" height="1" or width="16" height="9" on lazy-loaded <img> placeholders!
+     */
     fun isLikelyContentImage(url: String, width: Int? = null, height: Int? = null): Boolean {
         val trimmed = url.trim()
         if (trimmed.isEmpty()) return false
         val lower = trimmed.lowercase(Locale.ROOT)
-        if (lower.startsWith("data:")) return false
+        if (lower.startsWith("data:") || lower.startsWith("about:")) return false
         if (lower.endsWith(".svg") || lower.contains(".svg?")) return false
-
-        if (width != null && width in 1..99) return false
-        if (height != null && height in 1..99) return false
+        if (lower.endsWith(".gif") && (lower.contains("spacer") || lower.contains("blank") || lower.contains("pixel") || lower.contains("1x1"))) {
+            return false
+        }
 
         if (lower.contains("doubleclick.net") ||
             lower.contains("feedburner.com") ||
             lower.contains("gravatar.com") ||
-            lower.contains("s.w.org/images/core/emoji")
+            lower.contains("s.w.org/images/core/emoji") ||
+            lower.contains("wp-includes/images/smilies")
         ) {
             return false
         }
@@ -220,31 +227,38 @@ object ImageResolver {
 
     /**
      * Safely parses a srcset attribute even when individual URLs contain commas in query params
-     * (e.g. Polygon's ?crop=0,0,100,100&w=1200 1200w, https://... 800w).
+     * or when descriptors use 1x/2x or 1200w.
      */
     fun extractBestUrlFromSrcset(srcset: String): String? {
         val decoded = decodeHtmlEntities(srcset).trim()
         if (decoded.isEmpty()) return null
 
-        // Split only on commas that separate candidates (avoiding commas within URL query params like ?crop=0,0,100,100)
-        val entries = decoded.split(Regex(""",\s*(?=https?://|//|/|[^\s,]+(?:\s+\d+[wx]|\s*$))"""))
+        // Split on commas that are followed by whitespace and a URL (http://, https://, //, or /)
+        // or standard relative image paths if no absolute/rooted URLs are present
+        val entries = if (decoded.contains("://") || decoded.contains("//")) {
+            decoded.split(Regex(""",\s*(?=https?://|//|/)"""))
+        } else {
+            decoded.split(Regex(""",\s*(?=https?://|//|/|[^\s,]+(?:\s+\d+[wx]|\s*$))"""))
+        }
         var bestUrl: String? = null
-        var maxWidth = -1
+        var maxScore = -1
 
         for (entry in entries) {
-            val parts = entry.trim().split(Regex("""\s+"""))
+            val trimmedEntry = entry.trim().trimEnd(',')
+            if (trimmedEntry.isEmpty()) continue
+            val parts = trimmedEntry.split(Regex("""\s+"""))
             val url = parts.firstOrNull()?.trim()?.trimEnd(',') ?: continue
-            if (url.isEmpty() || url.startsWith("data:")) continue
+            if (url.isEmpty() || url.startsWith("data:") || url.startsWith("about:")) continue
 
             val descriptor = parts.getOrNull(1)?.lowercase() ?: ""
-            val width = when {
+            val score = when {
                 descriptor.endsWith("w") -> descriptor.dropLast(1).toIntOrNull() ?: 0
                 descriptor.endsWith("x") -> ((descriptor.dropLast(1).toFloatOrNull() ?: 1f) * 1000).toInt()
-                else -> 0
+                else -> 1
             }
 
-            if (width >= maxWidth) {
-                maxWidth = width
+            if (score >= maxScore) {
+                maxScore = score
                 bestUrl = url
             }
         }

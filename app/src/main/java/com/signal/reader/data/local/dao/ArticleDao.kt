@@ -73,6 +73,9 @@ interface ArticleDao {
     @Query("UPDATE articles SET imageUrl = :imageUrl WHERE id = :id")
     suspend fun updateImageUrl(id: Long, imageUrl: String)
 
+    @Query("UPDATE articles SET imageUrl = :imageUrl WHERE id = :id")
+    suspend fun updateArticleImage(id: Long, imageUrl: String)
+
     @Query("UPDATE articles SET imageUrl = NULL WHERE imageUrl = 'none'")
     suspend fun resetFailedArticleImages()
 

@@ -37,8 +37,22 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.18",
+        version = "v1.4.19",
         isCurrent = true,
+        summary = "Polygon & Hypebeast Image Resolution, Lazy-Loaded Media, Feed Enclosures, and WAF Negotiation",
+        markdownNotes = """
+### Polygon & Hypebeast Images & Galleries
+- **Placeholder Dimension Tolerance**: Removed small width/height rejection checks so lazy-loaded 1x1 GIF placeholders or aspect ratio tags on Polygon and Hypebeast never drop high-resolution images.
+- **Robust Srcset Parsing**: Added descriptor scoring (width `w` and pixel ratio `x`) with comma-safe lookahead splitting to preserve URLs with comma-separated query parameters.
+- **Enclosure & Media Tag Upgrades**: Feed parser now captures `rel="enclosure"` image links in RSS and Atom feeds, and accepts `<enclosure>`/`<media:content>` tags with generic MIME types when the file extension is an image.
+- **Sequential Container Priority**: Article body extraction uses prioritized selector lookup to ensure inner article containers are never shadowed by outer `<article>` tags.
+- **Lookbook & Gallery Extraction**: Top-level galleries, carousel sliders, and JSON-LD image arrays are captured and prepended in reader view.
+- **WAF Bot Negotiation**: Automated mobile User-Agent negotiation to bypass CloudFront WAF CAPTCHA challenges during extraction.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.18",
+        isCurrent = false,
         summary = "In-App Update Pop-Up Installer Launch, Polygon Media & Extraction, Hypebeast Galleries, and 256KB Head Crawl",
         markdownNotes = """
 ### In-App Update Dialog Fix

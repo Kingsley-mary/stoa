@@ -586,17 +586,23 @@ fun ReaderScreen(
                             onExtractClick = {
                                 coroutineScope.launch {
                                     isExtracting = true
-                                    val fullHtml = ReadabilityExtractor.extractArticleHtml(currentArticle.url)
+                                    val fullHtml = ReadabilityExtractor.extract(currentArticle.url)
+                                        ?: ReadabilityExtractor.extractArticleHtml(currentArticle.url)
                                     if (!fullHtml.isNullOrBlank()) {
                                         extractedHtml = fullHtml
                                         try {
                                             val repo = com.signal.reader.SignalApplication.instance.repository
+                                            val database = com.signal.reader.SignalApplication.instance.database
                                             repo.updateArticleFullContent(currentArticle.id, fullHtml, false)
                                             if (currentArticle.imageUrl.isNullOrBlank() || currentArticle.imageUrl == "none") {
-                                                val doc = org.jsoup.Jsoup.parse(fullHtml)
-                                                val newImg = ImageResolver.extractOpenGraphImage(doc) ?: ImageResolver.extractBestImageFromHtml(doc)
-                                                if (!newImg.isNullOrBlank()) {
-                                                    repo.updateArticleImage(currentArticle.id, newImg)
+                                                val firstImg = com.signal.reader.data.feed.ImageResolver.extractFromHtml(fullHtml, currentArticle.url)
+                                                    ?: run {
+                                                        val doc = org.jsoup.Jsoup.parse(fullHtml)
+                                                        ImageResolver.extractOpenGraphImage(doc) ?: ImageResolver.extractBestImageFromHtml(doc)
+                                                    }
+                                                if (!firstImg.isNullOrBlank()) {
+                                                    database.articleDao().updateArticleImage(currentArticle.id, firstImg)
+                                                    repo.updateArticleImage(currentArticle.id, firstImg)
                                                 }
                                             }
                                         } catch (_: Exception) {}
@@ -1354,7 +1360,7 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
     val seenImages = mutableSetOf<String>()
     heroImageUrl?.let { seenImages.add(it.trim()) }
 
-    val elements = doc.body().select("p, h1, h2, h3, h4, figure, img, blockquote, ul, ol, iframe, video, .in-content-video-embed")
+    val elements = doc.body().select("p, h1, h2, h3, h4, figure, img, source, picture, blockquote, ul, ol, iframe, video, .in-content-video-embed")
     val processedElements = mutableSetOf<org.jsoup.nodes.Element>()
 
     for (el in elements) {
@@ -1648,16 +1654,19 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                     }
                 }
             }
-            el.tagName().equals("img", ignoreCase = true) -> {
-                if (el.parent()?.tagName()?.lowercase() !in listOf("figure", "p")) {
+            el.tagName().lowercase() in listOf("img", "source", "picture") -> {
+                if (el.parent()?.tagName()?.lowercase() !in listOf("figure", "p", "picture")) {
                     val src = ImageResolver.extractFromHtml(el.outerHtml())
                         ?: ImageResolver.extractBestImageUrlFromElement(el)
                         ?: el.attr("src").ifBlank { el.attr("data-src") }.trim()
-                    val alt = el.attr("alt").trim()
+                    val alt = el.attr("alt").trim().ifBlank { el.selectFirst("img")?.attr("alt")?.trim().orEmpty() }
                     if (!src.isNullOrBlank() && !src.startsWith("data:") && seenImages.add(src)) {
-                        blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
+                        val lastBlock = blocks.lastOrNull()
+                        if (lastBlock !is ContentBlock.Image || lastBlock.url != src) {
+                            blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
+                        }
                     }
-                    processedElements.add(el)
+                    processedElements.addAll(el.getAllElements())
                 }
             }
             el.tagName().equals("blockquote", ignoreCase = true) -> {
@@ -3104,4 +3113,63 @@ private fun PillButton(
             )
         }
     }
+}
+
+sealed class HtmlBlock {
+    data class Paragraph(val text: String) : HtmlBlock()
+    data class Image(val url: String) : HtmlBlock()
+}
+
+/**
+ * Lightweight HTML block parser that parses consecutive text paragraphs and images.
+ */
+fun parseHtmlToBlocks(html: String): List<HtmlBlock> {
+    val blocks = mutableListOf<HtmlBlock>()
+    val paragraphSb = java.lang.StringBuilder()
+
+    fun flushParagraph() {
+        val text = paragraphSb.toString().trim()
+        if (text.isNotEmpty()) {
+            blocks.add(HtmlBlock.Paragraph(text))
+            paragraphSb.setLength(0)
+        }
+    }
+
+    val tagRegex = Regex("""</?([a-zA-Z0-9]+)\b[^>]*>""")
+    var lastIndex = 0
+    for (match in tagRegex.findAll(html)) {
+        val textBefore = html.substring(lastIndex, match.range.first)
+        if (textBefore.isNotEmpty()) {
+            paragraphSb.append(textBefore)
+        }
+        val fullMatch = match.value
+        val tagName = match.groupValues[1].lowercase()
+        val isClosing = fullMatch.startsWith("</")
+
+        when (tagName) {
+            "p", "br", "div" -> {
+                flushParagraph()
+            }
+            "img", "source" -> {
+                if (!isClosing) {
+                    val resolvedUrl = com.signal.reader.data.feed.ImageResolver.extractFromHtml(fullMatch)
+                    if (!resolvedUrl.isNullOrBlank()) {
+                        // Avoid duplicate consecutive identical image URLs (e.g. <source> followed by <img> inside <picture>)
+                        val lastBlock = blocks.lastOrNull()
+                        if (lastBlock !is HtmlBlock.Image || lastBlock.url != resolvedUrl) {
+                            flushParagraph()
+                            blocks.add(HtmlBlock.Image(resolvedUrl))
+                        }
+                    }
+                }
+            }
+        }
+        lastIndex = match.range.last + 1
+    }
+    val remaining = html.substring(lastIndex)
+    if (remaining.isNotEmpty()) {
+        paragraphSb.append(remaining)
+    }
+    flushParagraph()
+    return blocks
 }
