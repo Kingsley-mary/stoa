@@ -30,4 +30,7 @@ data class ArticleEntity(
     val saved: Boolean = false,
     val savedTime: Long? = null,
     val url: String = ""
-)
+) {
+    val link: String get() = url
+    val pubDate: Long get() = publishedTime
+}

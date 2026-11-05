@@ -82,8 +82,11 @@ interface ArticleDao {
     @Query("UPDATE articles SET fullContent = :fullContent, isExcerptOnly = :isExcerptOnly WHERE id = :id")
     suspend fun updateFullContent(id: Long, fullContent: String, isExcerptOnly: Boolean)
 
+    @Query("SELECT * FROM articles WHERE (imageUrl IS NULL OR imageUrl = '' OR imageUrl = 'none') AND url IS NOT NULL AND url != '' ORDER BY publishedTime DESC LIMIT 150")
+    suspend fun getArticlesWithoutImages(): List<ArticleEntity>
+
     @Query("SELECT * FROM articles WHERE (imageUrl IS NULL OR imageUrl = '' OR imageUrl = 'none') AND url IS NOT NULL AND url != '' ORDER BY publishedTime DESC LIMIT :limit")
-    suspend fun getArticlesWithoutImage(limit: Int = 30): List<ArticleEntity>
+    suspend fun getArticlesWithoutImage(limit: Int = 150): List<ArticleEntity>
 
     @Query("UPDATE articles SET read = 1 WHERE sourceId IN (:sourceIds) AND read = 0")
     suspend fun markAllAsReadForSources(sourceIds: List<Long>)

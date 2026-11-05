@@ -74,9 +74,9 @@ class SignalApplication : Application(), ImageLoaderFactory {
                 val request = chain.request().newBuilder()
                     .header(
                         "User-Agent",
-                        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
+                        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
                     )
-                    .header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+                    .header("Accept", "image/webp,image/apng,image/jpeg,image/png,image/*,*/*;q=0.8")
                     .build()
                 chain.proceed(request)
             }

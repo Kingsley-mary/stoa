@@ -17,8 +17,8 @@ object ReadabilityExtractor {
         .followRedirects(true)
         .build()
 
-    // Ordered from most specific article body container to least specific.
-    // MUST be queried sequentially so an outer <article> tag doesn't shadow an inner .article-body!
+    // Checked sequentially. If a selector matches multiple sibling blocks (like Polygon's
+    // .duet--article--article-body-component), ALL matching blocks are combined!
     private val ARTICLE_BODY_SELECTORS = listOf(
         "#article-body",
         ".article-body",
@@ -36,12 +36,12 @@ object ReadabilityExtractor {
     )
 
     private val UNLIKELY_CANDIDATES = Regex(
-        "combx|comment|community|disqus|extra|foot|header|menu|remark|rss|shoutbox|sidebar|sponsor|ad-break|agegate|pagination|pager|popup|tweet|twitter|nav|navigation|social|share|related|newsletter|subscription|cookie|banner|modal|widget|outbrain|taboola|promo|byline|author-bio|breadcrumbs|tags",
+        "combx|comment|community|disqus|extra|foot|menu|remark|rss|shoutbox|sidebar|sponsor|ad-break|agegate|pagination|pager|popup|tweet|twitter|nav|navigation|social|share|related|newsletter|subscription|cookie|banner|modal|widget|outbrain|taboola|promo|byline|author-bio|breadcrumbs|tags",
         RegexOption.IGNORE_CASE
     )
 
     private val OK_MAYBE_ITS_A_CANDIDATE = Regex(
-        "and|article|body|column|main|shadow|content|post|entry|story|text|gallery|w-img|body-img",
+        "and|article|body|column|main|shadow|content|post|entry|story|text|gallery|w-img|body-img|header|heading|hero|media|figure|carousel|slider",
         RegexOption.IGNORE_CASE
     )
 
@@ -62,32 +62,47 @@ object ReadabilityExtractor {
                 .header("User-Agent", ua)
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
                 .header("Accept-Language", "en-US,en;q=0.9")
+                .header("Sec-Fetch-Dest", "document")
+                .header("Sec-Fetch-Mode", "navigate")
+                .header("Sec-Fetch-Site", "none")
+                .header("Upgrade-Insecure-Requests", "1")
                 .build()
 
-            val primaryUa = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
-            val fallbackUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.165 Safari/537.36"
+            val primaryUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.165 Safari/537.36"
+            val fallbackUa = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
 
             val html = client.newCall(buildReq(primaryUa)).execute().use { response ->
-                if (response.isSuccessful) {
-                    response.body?.string()
-                } else null
+                if (response.isSuccessful) response.body?.string() else null
             } ?: client.newCall(buildReq(fallbackUa)).execute().use { response ->
-                if (response.isSuccessful) {
-                    response.body?.string()
-                } else null
+                if (response.isSuccessful) response.body?.string() else null
             } ?: return@withContext null
 
             val doc = Jsoup.parse(html, url)
 
-            // 1. Promote ALL <picture><source> tags in the entire document first so no image URLs are lost
+            // 1. Extract lead cover image (og:image / twitter:image) first
+            val leadImage = ImageResolver.extractMetaImage(html, url)
+
+            // 2. Unwrap <noscript> tags containing images BEFORE removing <noscript>,
+            // because Polygon & Hypebeast put static fallback <img> tags inside <noscript>!
+            doc.select("noscript").forEach { noscript ->
+                val inner = noscript.html()
+                if (inner.contains("<img", ignoreCase = true) || inner.contains("<picture", ignoreCase = true)) {
+                    noscript.after(inner)
+                }
+                noscript.remove()
+            }
+
+            // 3. Promote all <picture><source> tags across the entire document
             promotePictureElements(doc, url)
 
-            // 2. Capture dedicated top-level galleries (Hypebeast lookbooks/sliders, WordPress galleries, Valnet hero images)
+            // 4. Capture dedicated top-level galleries & hero figures (Hypebeast lookbooks, Polygon lead figures, Valnet images)
             val galleryImageUrls = mutableListOf<String>()
             doc.select(
-                ".post-body-gallery, .post-gallery, .post-body-image, .gallery-carousel, " +
-                ".gallery-slider, .swiper-wrapper, .swiper-slide, .wp-block-gallery, " +
-                "[data-gallery], .c-entry-hero, .heading_image, .w-img"
+                ".post-body-gallery, .post-gallery, .post-body-image, .post-body-carousel, " +
+                ".hypb-gallery, .gallery-carousel, .gallery-slider, .swiper-wrapper, .swiper-slide, " +
+                ".flickity-slider, .carousel-cell, .glide__slides, .wp-block-gallery, " +
+                "[data-gallery], .c-entry-hero, .heading_image, .featured-image, " +
+                ".duet--media--content-image, article header figure, article > figure, .w-img"
             ).forEach { galleryEl ->
                 extractImagesFromElement(galleryEl, url).forEach { imgUrl ->
                     if (!galleryImageUrls.contains(imgUrl)) {
@@ -96,31 +111,24 @@ object ReadabilityExtractor {
                 }
             }
 
-            // Also extract JSON-LD image arrays if this is a gallery/article page (e.g. Hypebeast lookbooks)
-            if (galleryImageUrls.isEmpty()) {
-                doc.select("script[type=application/ld+json]").forEach { script ->
-                    val json = script.data()
-                    Regex(""""(?:contentUrl|url)"\s*:\s*"(https?:[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"|"image"\s*:\s*\[\s*((?:"https?:[^"]+"\s*,?\s*)+)\]""", RegexOption.IGNORE_CASE)
-                        .findAll(json)
-                        .forEach { match ->
-                            val single = match.groupValues[1]
-                            val arrayBlock = match.groupValues[2]
-                            if (single.isNotBlank()) {
-                                val clean = ImageResolver.resolveAndSanitize(single.replace("\\/", "/"), url)
-                                if (clean != null && ImageResolver.isLikelyContentImage(clean) && !galleryImageUrls.contains(clean)) {
-                                    galleryImageUrls.add(clean)
-                                }
-                            }
-                            if (arrayBlock.isNotBlank()) {
-                                Regex(""""(https?:[^"]+)"""").findAll(arrayBlock).forEach { urlMatch ->
-                                    val clean = ImageResolver.resolveAndSanitize(urlMatch.groupValues[1].replace("\\/", "/"), url)
-                                    if (clean != null && ImageResolver.isLikelyContentImage(clean) && !galleryImageUrls.contains(clean)) {
-                                        galleryImageUrls.add(clean)
-                                    }
-                                }
-                            }
+            // Also inspect JSON-LD for multi-image arrays ("image": [...]) on Hypebeast/WordPress
+            doc.select("script[type=application/ld+json]").forEach { script ->
+                val json = script.data()
+                val arrayMatches = Regex(""""image"\s*:\s*\[([^\]]+)\]""", RegexOption.IGNORE_CASE).findAll(json)
+                for (m in arrayMatches) {
+                    Regex(""""(https?:[^"]+)"""").findAll(m.groupValues[1]).forEach { urlMatch ->
+                        val raw = urlMatch.groupValues[1].replace("\\/", "/")
+                        val clean = ImageResolver.resolveAndSanitize(raw, url)
+                        if (clean != null && ImageResolver.isLikelyContentImage(clean) && !galleryImageUrls.contains(clean)) {
+                            galleryImageUrls.add(clean)
                         }
+                    }
                 }
+            }
+
+            // If we still have no gallery/lead image in galleryImageUrls, include leadImage (og:image)
+            if (galleryImageUrls.isEmpty() && !leadImage.isNullOrBlank()) {
+                galleryImageUrls.add(leadImage)
             }
 
             // Extract embedded video players defined inside scripts before stripping scripts (e.g. Polygon / AdsNinja / Valnet)
@@ -153,20 +161,29 @@ object ReadabilityExtractor {
                 }
             }
 
-            // 3. Remove non-content clutter (keep .w-img, .body-img, figure, picture!)
+            // 5. Remove non-content clutter (never remove <header> or <figure> inside <article>!)
             doc.select(
                 "script, style, noscript, svg, form, button, input, select, textarea, " +
-                "nav, footer, header, aside, .sidebar, .comments, #comments, .related-posts, " +
+                "nav, footer, aside, .sidebar, .comments, #comments, .related-posts, " +
                 ".related, .newsletter, .share-buttons, .social-share, .author-box, " +
                 ".ad, .ads, .advertisement, .w-author, .article-tags"
             ).remove()
 
-            // 4. Find the article body container by checking selectors in priority order
+            // 6. Find article body container(s). If a selector matches multiple blocks (e.g. Polygon's
+            // .duet--article--article-body-component), combine ALL of them so no paragraphs or images are dropped!
             var bestElement: Element? = null
             for (selector in ARTICLE_BODY_SELECTORS) {
-                val candidate = doc.selectFirst(selector)
-                if (candidate != null && candidate.text().trim().length >= 120) {
-                    bestElement = candidate
+                val matches = doc.select(selector)
+                if (matches.isEmpty()) continue
+                val combinedTextLen = matches.sumOf { it.text().trim().length }
+                if (combinedTextLen >= 120) {
+                    bestElement = if (matches.size == 1) {
+                        matches.first()
+                    } else {
+                        val wrapper = doc.createElement("div")
+                        matches.forEach { wrapper.appendChild(it.clone()) }
+                        wrapper
+                    }
                     break
                 }
             }
@@ -175,26 +192,20 @@ object ReadabilityExtractor {
             }
             if (bestElement == null) return@withContext null
 
-            // 5. Normalize all <img> tags inside bestElement
+            // 7. Normalize all <img> tags inside bestElement into clean <img src="https://...">
             val inBodyImageUrls = mutableSetOf<String>()
             bestElement.select("img").forEach { img ->
                 val resolved = resolveImgElementUrl(img, url)
                 if (resolved == null || !ImageResolver.isLikelyContentImage(resolved)) {
                     img.remove()
                 } else {
+                    img.clearAttributes()
                     img.attr("src", resolved)
-                    img.removeAttr("srcset")
-                    img.removeAttr("data-src")
-                    img.removeAttr("data-srcset")
-                    img.removeAttr("data-lazy-src")
-                    img.removeAttr("data-original")
-                    img.removeAttr("loading")
                     inBodyImageUrls.add(resolved)
                 }
             }
 
-            // 6. Unwrap <picture> and <figure> wrappers into clean <p><img src="..."/></p> so ReaderScreen's
-            // simple HTML tokenizer always sees standalone <img> tags
+            // 8. Unwrap <picture> tags so ReaderScreen sees standalone <img> tags
             bestElement.select("picture").forEach { pic ->
                 val img = pic.selectFirst("img")
                 if (img != null) {
@@ -204,7 +215,7 @@ object ReadabilityExtractor {
                 }
             }
 
-            // 7. Convert YouTube/Vimeo iframes into clickable links
+            // 9. Convert YouTube/Vimeo/video iframes into clickable links
             bestElement.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src").ifBlank { iframe.attr("data-src") }
                 if (src.contains("youtube.com") || src.contains("youtu.be") || src.contains("vimeo.com")) {
@@ -214,7 +225,7 @@ object ReadabilityExtractor {
                 iframe.remove()
             }
 
-            // 8. Prepend any gallery/hero images not already inside bestElement
+            // 10. Prepend any gallery/lead images not already in bestElement
             val galleryPrefix = buildString {
                 for (gUrl in galleryImageUrls) {
                     if (gUrl !in inBodyImageUrls) {
@@ -232,21 +243,15 @@ object ReadabilityExtractor {
 
     suspend fun extractArticleHtml(url: String): String? = extract(url)
 
-    /**
-     * Copies the best URL from <picture><source srcset="..."> onto the child <img> tag's
-     * data-promoted-src attribute so placeholder <img src="data:..." width="1" height="1">
-     * never shadows the real high-res image!
-     */
     private fun promotePictureElements(root: Element, baseUrl: String) {
         root.select("picture").forEach { picture ->
             val bestSourceUrl = picture.select("source")
                 .mapNotNull { source ->
                     val type = source.attr("type").lowercase()
                     if (type.isNotEmpty() && !type.startsWith("image/")) return@mapNotNull null
-                    val srcset = source.attr("data-srcset")
-                        .ifBlank { source.attr("srcset") }
-                        .ifBlank { source.attr("data-src") }
-                    ImageResolver.extractBestUrlFromSrcset(srcset) ?: srcset.takeIf { it.isNotBlank() }
+                    ImageResolver.extractBestFromElementSrcset(source)
+                        ?: source.attr("data-src").takeIf { it.isNotBlank() }
+                        ?: source.attr("src").takeIf { it.isNotBlank() }
                 }
                 .firstOrNull()
 
@@ -266,19 +271,7 @@ object ReadabilityExtractor {
     }
 
     private fun resolveImgElementUrl(img: Element, baseUrl: String): String? {
-        val rawSrc = img.attr("data-promoted-src")
-            .ifBlank { img.attr("data-lazy-src") }
-            .ifBlank { img.attr("data-src") }
-            .ifBlank { img.attr("data-lazy") }
-            .ifBlank { img.attr("data-original") }
-            .ifBlank { img.attr("data-actualsrc") }
-            .ifBlank { img.attr("data-hi-res-src") }
-            .ifBlank {
-                val srcset = img.attr("data-srcset").ifBlank { img.attr("srcset") }
-                ImageResolver.extractBestUrlFromSrcset(srcset) ?: ""
-            }
-            .ifBlank { img.attr("src") }
-
+        val rawSrc = ImageResolver.extractBestUrlFromImgElement(img) ?: return null
         return ImageResolver.resolveAndSanitize(rawSrc, baseUrl)
     }
 
@@ -291,6 +284,18 @@ object ReadabilityExtractor {
                 urls.add(resolved)
             }
         }
+        element.select("[data-flickity-lazyload], [data-src], [data-lazy], [data-bg]").forEach { el ->
+            if (el.tagName().lowercase() != "img") {
+                val raw = el.attr("data-flickity-lazyload")
+                    .ifBlank { el.attr("data-src") }
+                    .ifBlank { el.attr("data-lazy") }
+                    .ifBlank { el.attr("data-bg") }
+                val resolved = ImageResolver.resolveAndSanitize(raw, baseUrl)
+                if (resolved != null && ImageResolver.isLikelyContentImage(resolved) && !urls.contains(resolved)) {
+                    urls.add(resolved)
+                }
+            }
+        }
         return urls
     }
 
@@ -299,7 +304,7 @@ object ReadabilityExtractor {
         for (node in allElements) {
             val tag = node.tagName().lowercase()
             if (tag == "body" || tag == "html" || tag == "article" || tag == "main") continue
-            val matchString = "${node.className()}${node.id()}"
+            val matchString = "${node.className()} ${node.id()}"
             if (UNLIKELY_CANDIDATES.containsMatchIn(matchString) &&
                 !OK_MAYBE_ITS_A_CANDIDATE.containsMatchIn(matchString)
             ) {
@@ -348,7 +353,7 @@ object ReadabilityExtractor {
             "h1", "h2", "h3", "h4", "h5", "h6", "th" -> -5.0
             else -> 0.0
         }
-        val matchString = "${element.className()}${element.id()}"
+        val matchString = "${element.className()} ${element.id()}"
         if (NEGATIVE_WEIGHT.containsMatchIn(matchString)) score -= 25.0
         if (POSITIVE_WEIGHT.containsMatchIn(matchString)) score += 25.0
         return score

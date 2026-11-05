@@ -15,6 +15,7 @@ import okhttp3.Request
 import org.jsoup.Jsoup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -33,6 +34,9 @@ class FeedRepository(
     val discovery: FeedDiscovery = FeedDiscovery(fetcher)
 ) {
     private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val crawlScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var crawlJob: Job? = null
+    private val attemptedUrls = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     private val sourceDao = database.sourceDao()
     private val articleDao = database.articleDao()
@@ -245,9 +249,7 @@ class FeedRepository(
                     }
                 }
             }
-            repoScope.launch {
-                resolveMissingArticleImages(15)
-            }
+            crawlMissingImages()
             newArticles.size
         } catch (e: Exception) {
             sourceDao.recordFailure(sourceId, e.message ?: "Network or parsing error")
@@ -268,9 +270,7 @@ class FeedRepository(
             totalNew = tasks.awaitAll().sum()
         }
         notifyWidgetUpdate()
-        repoScope.launch {
-            resolveMissingArticleImages(25)
-        }
+        crawlMissingImages()
         totalNew
     }
 
@@ -323,20 +323,69 @@ class FeedRepository(
 
     private val httpClient = FeedFetcher.createDefaultClient()
 
+    fun crawlMissingImages() {
+        // Do NOT cancel an already-active crawlJob; let it finish or launch a new one if idle
+        if (crawlJob?.isActive == true) return
+        crawlJob = crawlScope.launch {
+            try {
+                val articlesWithoutImages = articleDao.getArticlesWithoutImages()
+                val toCrawl = articlesWithoutImages
+                    .filter { it.link.isNotBlank() && !attemptedUrls.contains(it.link) }
+                    .take(60)
+
+                if (toCrawl.isEmpty()) return@launch
+
+                val semaphore = kotlinx.coroutines.sync.Semaphore(4)
+                toCrawl.map { article ->
+                    async(Dispatchers.IO) {
+                        semaphore.withPermit {
+                            attemptedUrls.add(article.link)
+                            val ogImage = runCatching { fetchOgImage(article.link) }.getOrNull()
+                            if (!ogImage.isNullOrBlank()) {
+                                articleDao.updateImageUrl(article.id, ogImage)
+                            }
+                        }
+                    }
+                }.awaitAll()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    suspend fun resolveMissingArticleImages(limit: Int = 60) = withContext(Dispatchers.IO) {
+        crawlMissingImages()
+    }
+
     private fun fetchOgImage(articleUrl: String): String? {
         val request = Request.Builder()
             .url(articleUrl)
             .header(
                 "User-Agent",
-                "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.165 Safari/537.36"
             )
-            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
             .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "none")
+            .header("Upgrade-Insecure-Requests", "1")
             .build()
 
-        return httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return@use null
-            val body = response.body ?: return@use null
+        var response = runCatching { httpClient.newCall(request).execute() }.getOrNull()
+        if (response != null && (response.code == 403 || response.code == 405)) {
+            response.close()
+            val fallbackReq = request.newBuilder()
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
+                )
+                .build()
+            response = runCatching { httpClient.newCall(fallbackReq).execute() }.getOrNull()
+        }
+
+        return response?.use { resp ->
+            if (!resp.isSuccessful) return@use null
+            val body = resp.body ?: return@use null
             val source = body.source()
             val maxBytes = 256 * 1024L
             val buffer = okio.Buffer()
@@ -348,36 +397,6 @@ class FeedRepository(
             }
             val html = buffer.readString(Charsets.UTF_8)
             ImageResolver.extractMetaImage(html, articleUrl)
-        }
-    }
-
-    suspend fun resolveMissingArticleImages(limit: Int = 30) = withContext(Dispatchers.IO) {
-        val missing = articleDao.getArticlesWithoutImage(limit)
-        if (missing.isEmpty()) return@withContext
-
-        val semaphore = Semaphore(4)
-        coroutineScope {
-            missing.map { article ->
-                async {
-                    val url = article.url
-                    if (url.isBlank()) {
-                        articleDao.updateImageUrl(article.id, "none")
-                        return@async
-                    }
-                    semaphore.withPermit {
-                        try {
-                            val ogImg = fetchOgImage(url)
-                            if (!ogImg.isNullOrBlank()) {
-                                articleDao.updateImageUrl(article.id, ogImg)
-                            } else {
-                                articleDao.updateImageUrl(article.id, "none")
-                            }
-                        } catch (_: Exception) {
-                            // Don't mark as "none" on network exceptions; allow retry next time
-                        }
-                    }
-                }
-            }.awaitAll()
         }
     }
 

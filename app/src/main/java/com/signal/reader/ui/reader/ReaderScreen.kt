@@ -170,7 +170,11 @@ fun ReaderScreen(
     val coroutineScope = rememberCoroutineScope()
     val settings by settingsManager.settingsFlow.collectAsState()
 
-    val article by repository.getArticleByIdFlow(articleId).collectAsState(initial = null)
+    val dbArticle by repository.getArticleByIdFlow(articleId).collectAsState(initial = null)
+    var article by remember(articleId) { mutableStateOf<ArticleEntity?>(null) }
+    LaunchedEffect(dbArticle) {
+        if (dbArticle != null) article = dbArticle
+    }
     val homeArticles by repository.getHomeStreamFlow().collectAsState(initial = emptyList())
     val relatedArticles = remember(homeArticles, articleId) {
         homeArticles.filter { it.id != articleId && !it.read }.take(3)
@@ -236,7 +240,7 @@ fun ReaderScreen(
     // Bookmark pop animation on save (.rf .bump svg { animation: pop .45s var(--spring) })
     val bookmarkPop = remember { Animatable(1.0f) }
 
-    val currentArticle = article ?: return
+    val currentArticle = article ?: dbArticle ?: return
 
     fun openWeb(url: String, title: String? = null) {
         if (url.isNotBlank()) {
@@ -258,6 +262,36 @@ fun ReaderScreen(
 
     var extractedHtml by remember { mutableStateOf<String?>(null) }
     var isExtracting by remember { mutableStateOf(false) }
+
+    LaunchedEffect(articleId, currentArticle.id) {
+        val rawContent = currentArticle.fullContent ?: currentArticle.excerpt
+        val plainLength = org.jsoup.Jsoup.parse(rawContent).text().length
+        if (extractedHtml == null && (currentArticle.isExcerptOnly || plainLength < 650)) {
+            isExtracting = true
+            val extracted = withContext(Dispatchers.IO) {
+                ReadabilityExtractor.extract(currentArticle.url)
+                    ?: ReadabilityExtractor.extractArticleHtml(currentArticle.url)
+            }
+            if (!extracted.isNullOrBlank()) {
+                extractedHtml = extracted
+                withContext(Dispatchers.IO) {
+                    val repo = com.signal.reader.SignalApplication.instance.repository
+                    val database = com.signal.reader.SignalApplication.instance.database
+                    repo.updateArticleFullContent(currentArticle.id, extracted, false)
+                    if (currentArticle.imageUrl.isNullOrBlank()) {
+                        val firstImg = ImageResolver.extractFromHtml(extracted, currentArticle.link)
+                        if (!firstImg.isNullOrBlank()) {
+                            database.articleDao().updateImageUrl(currentArticle.id, firstImg)
+                            withContext(Dispatchers.Main) {
+                                article = currentArticle.copy(imageUrl = firstImg)
+                            }
+                        }
+                    }
+                }
+            }
+            isExtracting = false
+        }
+    }
     var showShareSheet by remember(initialShareQuote) { mutableStateOf(!initialShareQuote.isNullOrBlank()) }
     var pendingShareQuote by remember(initialShareQuote) { mutableStateOf(initialShareQuote) }
 
@@ -601,8 +635,9 @@ fun ReaderScreen(
                                                         ImageResolver.extractOpenGraphImage(doc) ?: ImageResolver.extractBestImageFromHtml(doc)
                                                     }
                                                 if (!firstImg.isNullOrBlank()) {
-                                                    database.articleDao().updateArticleImage(currentArticle.id, firstImg)
+                                                    database.articleDao().updateImageUrl(currentArticle.id, firstImg)
                                                     repo.updateArticleImage(currentArticle.id, firstImg)
+                                                    article = currentArticle.copy(imageUrl = firstImg)
                                                 }
                                             }
                                         } catch (_: Exception) {}
@@ -3124,6 +3159,10 @@ sealed class HtmlBlock {
  * Lightweight HTML block parser that parses consecutive text paragraphs and images.
  */
 fun parseHtmlToBlocks(html: String): List<HtmlBlock> {
+    val cleanedHtml = html
+        .replace(Regex("""<!--[\s\S]*?-->"""), "")
+        .replace(Regex("""<(script|style|svg|head|nav|footer|aside|form|button|iframe)[^>]*>[\s\S]*?</\1>""", RegexOption.IGNORE_CASE), "")
+
     val blocks = mutableListOf<HtmlBlock>()
     val paragraphSb = java.lang.StringBuilder()
 
@@ -3137,8 +3176,8 @@ fun parseHtmlToBlocks(html: String): List<HtmlBlock> {
 
     val tagRegex = Regex("""</?([a-zA-Z0-9]+)\b[^>]*>""")
     var lastIndex = 0
-    for (match in tagRegex.findAll(html)) {
-        val textBefore = html.substring(lastIndex, match.range.first)
+    for (match in tagRegex.findAll(cleanedHtml)) {
+        val textBefore = cleanedHtml.substring(lastIndex, match.range.first)
         if (textBefore.isNotEmpty()) {
             paragraphSb.append(textBefore)
         }
@@ -3166,7 +3205,7 @@ fun parseHtmlToBlocks(html: String): List<HtmlBlock> {
         }
         lastIndex = match.range.last + 1
     }
-    val remaining = html.substring(lastIndex)
+    val remaining = cleanedHtml.substring(lastIndex)
     if (remaining.isNotEmpty()) {
         paragraphSb.append(remaining)
     }

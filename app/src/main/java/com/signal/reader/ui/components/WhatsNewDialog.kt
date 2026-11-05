@@ -37,8 +37,21 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.19",
+        version = "v1.4.20",
         isCurrent = true,
+        summary = "Image Crawler Reliability, Teaser Auto-Extraction, Immediate Cover Updates, and Coil Header Cleanup",
+        markdownNotes = """
+### Image Crawler & Extraction Upgrades
+- **Non-Cancelling Image Crawler**: Feed image crawler no longer cancels mid-flight when concurrent source feeds complete refreshing, and scales missing image query batch size to 150 with a 60-article concurrency pool.
+- **Teaser Auto-Extraction**: Short excerpt feeds (under 650 characters) like Polygon and Hypebeast now automatically trigger full-text readability extraction when opened in reader view.
+- **Immediate Cover Image Update**: Resolved cover images update Compose state immediately upon extraction without needing to navigate away and return.
+- **Header & Noscript Block Retention**: Block parser retains `<header>` and `<noscript>` elements so in-article headers and noscript fallback images render properly.
+- **Coil Header Cleanup**: Removed synthetic `Referer` and AVIF headers from Coil image loader to prevent CDN 403 blocks and image decode failures.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.19",
+        isCurrent = false,
         summary = "Polygon & Hypebeast Image Resolution, Lazy-Loaded Media, Feed Enclosures, and WAF Negotiation",
         markdownNotes = """
 ### Polygon & Hypebeast Images & Galleries
