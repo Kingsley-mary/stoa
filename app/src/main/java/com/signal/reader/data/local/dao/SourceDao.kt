@@ -12,13 +12,13 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface SourceDao {
 
-    @Query("SELECT * FROM sources ORDER BY displayOrder ASC, id ASC")
+    @Query("SELECT * FROM sources ORDER BY isPinned DESC, displayOrder ASC, id ASC")
     fun getAllSourcesFlow(): Flow<List<SourceEntity>>
 
-    @Query("SELECT * FROM sources WHERE followed = 1 ORDER BY displayOrder ASC, id ASC")
+    @Query("SELECT * FROM sources WHERE followed = 1 ORDER BY isPinned DESC, displayOrder ASC, id ASC")
     fun getFollowedSourcesFlow(): Flow<List<SourceEntity>>
 
-    @Query("SELECT * FROM sources WHERE followed = 1 AND muted = 0 ORDER BY displayOrder ASC, id ASC")
+    @Query("SELECT * FROM sources WHERE followed = 1 AND muted = 0 ORDER BY isPinned DESC, displayOrder ASC, id ASC")
     fun getFollowedUnmutedSourcesFlow(): Flow<List<SourceEntity>>
 
     @Query("SELECT * FROM sources")
@@ -65,6 +65,21 @@ interface SourceDao {
 
     @Query("UPDATE sources SET notificationsEnabled = :enabled WHERE id = :id")
     suspend fun setNotificationsEnabled(id: Long, enabled: Boolean)
+
+    @Query("UPDATE sources SET isPinned = :pinned WHERE id = :id")
+    suspend fun setPinned(id: Long, pinned: Boolean)
+
+    @Query("""
+        UPDATE sources 
+        SET lastFetched = :timestamp, 
+            isBroken = 0, 
+            consecutiveFailures = 0, 
+            errorState = null,
+            etag = COALESCE(:etag, etag),
+            lastModified = COALESCE(:lastModified, lastModified)
+        WHERE id = :id
+    """)
+    suspend fun recordSuccessWithHeaders(id: Long, timestamp: Long, etag: String?, lastModified: String?)
 
     @Query("SELECT * FROM sources WHERE followed = 1 AND notificationsEnabled = 1")
     suspend fun getNotificationEnabledSources(): List<SourceEntity>

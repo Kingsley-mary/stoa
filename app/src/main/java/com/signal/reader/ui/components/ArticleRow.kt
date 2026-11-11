@@ -62,6 +62,7 @@ fun ArticleRow(
     article: ArticleEntity,
     onClick: () -> Unit,
     onToggleSave: () -> Unit,
+    onToggleRead: (() -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
@@ -71,8 +72,10 @@ fun ArticleRow(
     val coroutineScope = rememberCoroutineScope()
 
     val offsetX = remember { Animatable(0f) }
-    var isArmed by remember { mutableStateOf(false) }
+    var isArmedRight by remember { mutableStateOf(false) }
+    var isArmedLeft by remember { mutableStateOf(false) }
     var hasHapticFired by remember { mutableStateOf(false) }
+    val isArmed = isArmedRight || isArmedLeft
 
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -103,30 +106,57 @@ fun ArticleRow(
             .fillMaxWidth()
             .background(underlayBg)
     ) {
-        // Underlay (.under): reveals Save / Unsave bookmark
-        Row(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 22.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            BookmarkIcon(
-                isFilled = isArmed || article.saved,
-                color = underlayContentColor,
+        // Left Underlay (shown when swiping right): reveals Save / Unsave bookmark
+        if (offsetX.value >= 0f) {
+            Row(
                 modifier = Modifier
-                    .size(20.dp)
-                    .scale(if (isArmed) 1.25f else 1f)
-            )
-            Text(
-                text = if (article.saved) "Unsave" else "Save",
-                color = underlayContentColor,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp
-            )
+                    .align(Alignment.CenterStart)
+                    .padding(start = 22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                BookmarkIcon(
+                    isFilled = isArmedRight || article.saved,
+                    color = underlayContentColor,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .scale(if (isArmedRight) 1.25f else 1f)
+                )
+                Text(
+                    text = if (article.saved) "Unsave" else "Save",
+                    color = underlayContentColor,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
+                )
+            }
         }
 
-        // Foreground (.fg): article row content that slides rightward
+        // Right Underlay (shown when swiping left): reveals Mark read / Mark unread
+        if (offsetX.value < 0f) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = if (article.read) "Mark unread" else "Mark read",
+                    color = underlayContentColor,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
+                )
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .scale(if (isArmedLeft) 1.3f else 1f)
+                        .clip(CircleShape)
+                        .background(if (article.read) colors.accent else underlayContentColor)
+                )
+            }
+        }
+
+        // Foreground (.fg): article row content that slides horizontally
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -137,21 +167,23 @@ fun ArticleRow(
                     orientation = Orientation.Horizontal,
                     state = rememberDraggableState { delta ->
                         coroutineScope.launch {
-                            val newRaw = (offsetX.value + delta).coerceAtLeast(0f)
-                            val damped = if (newRaw > resistanceLimit) {
-                                resistanceLimit + (newRaw - resistanceLimit) * 0.3f
-                            } else {
-                                newRaw
+                            val newRaw = offsetX.value + delta
+                            val damped = when {
+                                newRaw > resistanceLimit -> resistanceLimit + (newRaw - resistanceLimit) * 0.3f
+                                newRaw < -resistanceLimit -> -resistanceLimit + (newRaw + resistanceLimit) * 0.3f
+                                else -> newRaw
                             }
                             offsetX.snapTo(damped)
 
-                            val nowArmed = damped >= thresholdPx
-                            if (nowArmed != isArmed) {
-                                isArmed = nowArmed
-                                if (nowArmed && !hasHapticFired) {
+                            val nowArmedRight = damped >= thresholdPx
+                            val nowArmedLeft = damped <= -thresholdPx
+                            if (nowArmedRight != isArmedRight || nowArmedLeft != isArmedLeft) {
+                                isArmedRight = nowArmedRight
+                                isArmedLeft = nowArmedLeft
+                                if ((nowArmedRight || nowArmedLeft) && !hasHapticFired) {
                                     haptics.tick()
                                     hasHapticFired = true
-                                } else if (!nowArmed) {
+                                } else if (!nowArmedRight && !nowArmedLeft) {
                                     hasHapticFired = false
                                 }
                             }
@@ -159,10 +191,17 @@ fun ArticleRow(
                     },
                     onDragStopped = {
                         coroutineScope.launch {
-                            if (isArmed) {
+                            if (isArmedRight) {
                                 onToggleSave()
+                            } else if (isArmedLeft) {
+                                if (onToggleRead != null) {
+                                    onToggleRead()
+                                } else {
+                                    com.signal.reader.SignalApplication.instance.repository.toggleRead(article.id)
+                                }
                             }
-                            isArmed = false
+                            isArmedRight = false
+                            isArmedLeft = false
                             hasHapticFired = false
                             offsetX.animateTo(
                                 targetValue = 0f,
@@ -175,7 +214,7 @@ fun ArticleRow(
                     interactionSource = interactionSource,
                     indication = null
                 ) {
-                    if (offsetX.value < 10f) {
+                    if (kotlin.math.abs(offsetX.value) < 10f) {
                         onClick()
                     }
                 }

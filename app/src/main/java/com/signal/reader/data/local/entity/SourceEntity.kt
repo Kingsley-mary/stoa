@@ -24,5 +24,8 @@ data class SourceEntity(
     val isBroken: Boolean = false,
     val consecutiveFailures: Int = 0,
     val displayOrder: Int = 0,
-    val notificationsEnabled: Boolean = true
+    val notificationsEnabled: Boolean = true,
+    val etag: String? = null,
+    val lastModified: String? = null,
+    val isPinned: Boolean = false
 )

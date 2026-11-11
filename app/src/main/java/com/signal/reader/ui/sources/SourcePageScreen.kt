@@ -279,29 +279,61 @@ fun SourcePageScreen(
                                         modifier = Modifier.padding(top = 4.dp)
                                     )
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .background(if (isRetrying) colors.mute.copy(alpha = 0.5f) else colors.ink)
-                                        .signalPressScale(0.96f) {
-                                            if (!isRetrying) {
-                                                haptics.tick()
-                                                isRetrying = true
-                                                coroutineScope.launch {
-                                                    repository.refreshSource(currentSource.id)
-                                                    isRetrying = false
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .border(1.dp, colors.ink, CircleShape)
+                                            .signalPressScale(0.96f) {
+                                                if (!isRetrying) {
+                                                    haptics.tick()
+                                                    isRetrying = true
+                                                    coroutineScope.launch {
+                                                        val ok = repository.repairSourceFeed(currentSource.id)
+                                                        isRetrying = false
+                                                        statusNote = if (ok) {
+                                                            "Feed repaired and updated."
+                                                        } else {
+                                                            "Could not auto-discover feed URL."
+                                                        }
+                                                    }
                                                 }
                                             }
-                                        }
-                                        .padding(horizontal = 16.dp, vertical = 9.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = if (isRetrying) "Checking…" else "Retry",
-                                        color = colors.bg,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
+                                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Repair",
+                                            color = colors.ink,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(if (isRetrying) colors.mute.copy(alpha = 0.5f) else colors.ink)
+                                            .signalPressScale(0.96f) {
+                                                if (!isRetrying) {
+                                                    haptics.tick()
+                                                    isRetrying = true
+                                                    coroutineScope.launch {
+                                                        repository.refreshSource(currentSource.id)
+                                                        isRetrying = false
+                                                    }
+                                                }
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = if (isRetrying) "Checking…" else "Retry",
+                                            color = colors.bg,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -369,7 +401,33 @@ fun SourcePageScreen(
                             )
                         }
 
-                        // Alerts pill right beside Mute (only shown when followed)
+                        // Pin / Pinned pill
+                        val isPinned = currentSource.isPinned
+                        Box(
+                            modifier = Modifier
+                                .signalPillButton(
+                                    backgroundColor = if (isPinned) colors.ink else colors.bg,
+                                    borderColor = colors.ink,
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            repository.togglePinned(currentSource.id)
+                                            statusNote = if (!isPinned) {
+                                                "Pinned to the top of Sources."
+                                            } else null
+                                        }
+                                    }
+                                )
+                                .padding(horizontal = 16.dp, vertical = 11.dp)
+                        ) {
+                            Text(
+                                text = if (isPinned) "Pinned ★" else "Pin",
+                                color = if (isPinned) colors.bg else colors.ink,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        // Alerts pill right beside Pin (only shown when followed)
                         if (isFollowed) {
                             val notifManager = remember { (context.applicationContext as com.signal.reader.SignalApplication).notificationManager }
                             val isSystemActive = remember(currentSource.id) { notifManager.isChannelEnabledInSystem(currentSource.id) }
@@ -573,6 +631,11 @@ fun SourcePageScreen(
                         onToggleSave = {
                             coroutineScope.launch {
                                 repository.toggleSaved(article.id)
+                            }
+                        },
+                        onToggleRead = {
+                            coroutineScope.launch {
+                                repository.toggleRead(article.id)
                             }
                         },
                         sharedTransitionScope = sharedTransitionScope,

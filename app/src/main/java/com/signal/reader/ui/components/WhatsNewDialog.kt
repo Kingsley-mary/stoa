@@ -37,8 +37,28 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.4.20",
+        version = "v1.5.0",
         isCurrent = true,
+        summary = "Highlights & Clippings, Persistent Mini Audio Player, Bidirectional Swipes, Pinned Sources, Feed Repair, HTTP Conditional Sync & Database Protection",
+        markdownNotes = """
+### New Features & Reading Upgrades
+- **Highlights & Clippings**: Select any passage in an article and tap **Highlight** to save it to your personal Highlights collection under the **Saved** tab, complete with 1-tap quote card sharing.
+- **Persistent Mini Audio Player**: Listening to an article now continues seamlessly as you browse your Home stream, Sources, or Saved stories via a persistent mini audio player bar with sentence skip (`«` / `»`), speed controls, and Android AudioFocus handling.
+- **Bidirectional Swipe Actions**: Swipe right on any story row to **Save / Unsave**, or swipe left to toggle **Read / Unread** status with tactile spring physics.
+- **Undo Mark All as Read**: Marking all stories as read now presents an interactive **"Marked N as read · Undo"** pill so accidental taps can be reversed in one tap.
+- **Pinned Sources & Auto-Repair**: Pin favorite publications (`★`) to the top of your Sources list, and use **Repair** on broken feeds to automatically re-discover moved RSS/Atom endpoints.
+- **Saved Filters & Search**: Filter your saved stories by **All / Unread / Read**, search within your Saved library and Highlights, and read `<pre><code>` blocks, `<table>` data, and a **Next Unread Story** card in Reader view.
+- **Offline Pre-Extraction & Unread Filter**: Added Settings toggles to filter Home to unread stories only and to pre-extract full articles in the background for offline reading.
+
+### Performance, Sync & Stability Fixes
+- **HTTP Conditional Caching (`ETag` / `Last-Modified`)**: Feed refreshes now send `If-None-Match` and `If-Modified-Since` headers, skipping unchanged XML payloads (`304 Not Modified`) for dramatically faster sync and lower battery/data usage.
+- **Bounded Concurrency & Streaming Buffers**: Replaced upfront 5 MB array allocations with dynamic 32 KB streaming buffers and bounded concurrent feed refreshes (`Semaphore(6)`) to prevent Out-Of-Memory crashes.
+- **SQLite `CursorWindow` Protection & Safe Migrations**: Capped list-query `fullContent` projections to prevent 2 MB `CursorWindow` crashes on long-form feeds, and replaced destructive migration fallbacks with explicit schema migrations (`MIGRATION_2_3`).
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.4.20",
+        isCurrent = false,
         summary = "Image Crawler Reliability, Teaser Auto-Extraction, Immediate Cover Updates, and Coil Header Cleanup",
         markdownNotes = """
 ### Image Crawler & Extraction Upgrades

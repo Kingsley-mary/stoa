@@ -107,6 +107,7 @@ fun SearchScreen(
 
     LaunchedEffect(query, allSources, catalogSources) {
         if (query.isNotBlank()) {
+            delay(150) // Debounce rapid keystrokes
             val q = query.trim().lowercase()
             val categorySourceNames = catalogSources.filter { cs ->
                 cs.topics.any { it.lowercase().contains(q) } || cs.name.lowercase().contains(q)

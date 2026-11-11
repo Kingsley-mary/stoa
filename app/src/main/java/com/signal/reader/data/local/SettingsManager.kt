@@ -20,7 +20,8 @@ data class SignalSettings(
     val recentSearches: List<String> = emptyList(),
     val newSitesBehavior: String = "follow_and_open", // "follow_and_open", "ask_first", "just_open"
     val openByDefaultCardDismissed: Boolean = false,
-    val userInterests: Set<String> = emptySet()
+    val userInterests: Set<String> = emptySet(),
+    val offlinePreExtract: Boolean = false
 )
 
 class SettingsManager(context: Context) {
@@ -48,8 +49,14 @@ class SettingsManager(context: Context) {
             recentSearches = recents,
             newSitesBehavior = prefs.getString(KEY_NEW_SITES_BEHAVIOR, "follow_and_open") ?: "follow_and_open",
             openByDefaultCardDismissed = prefs.getBoolean(KEY_OPEN_BY_DEFAULT_DISMISSED, false),
-            userInterests = prefs.getStringSet(KEY_USER_INTERESTS, emptySet()) ?: emptySet()
+            userInterests = prefs.getStringSet(KEY_USER_INTERESTS, emptySet()) ?: emptySet(),
+            offlinePreExtract = prefs.getBoolean(KEY_OFFLINE_PRE_EXTRACT, false)
         )
+    }
+
+    fun updateOfflinePreExtract(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_OFFLINE_PRE_EXTRACT, enabled).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(offlinePreExtract = enabled)
     }
 
     fun updateNewSitesBehavior(behavior: String) {
@@ -154,5 +161,6 @@ class SettingsManager(context: Context) {
         private const val KEY_NEW_SITES_BEHAVIOR = "new_sites_behavior"
         private const val KEY_OPEN_BY_DEFAULT_DISMISSED = "open_by_default_dismissed"
         private const val KEY_USER_INTERESTS = "user_interests"
+        private const val KEY_OFFLINE_PRE_EXTRACT = "offline_pre_extract"
     }
 }

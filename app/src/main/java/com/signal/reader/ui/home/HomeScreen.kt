@@ -153,6 +153,7 @@ fun HomeScreen(
     var selectedSourceId by rememberSaveable { mutableStateOf<Long?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     var toastMessage by remember { mutableStateOf<String?>(null) }
+    var undoMarkReadIds by remember { mutableStateOf<List<Long>>(emptyList()) }
 
     // First load word animation flag
     var hasAnimatedFirstLoad by remember { mutableStateOf(false) }
@@ -162,12 +163,17 @@ fun HomeScreen(
     val feedOffsetY = remember { Animatable(0f) }
     var shouldSlideHero by remember { mutableStateOf(false) }
 
-    // Filter stream by active chip and sort Unread first
-    val filteredArticles = remember(allArticles, selectedSourceId) {
-        val base = if (selectedSourceId == null) {
+    // Filter stream by active chip, unreadOnlyFilter setting, and sort Unread first
+    val filteredArticles = remember(allArticles, selectedSourceId, homeSettings.unreadOnlyFilter) {
+        val bySource = if (selectedSourceId == null) {
             allArticles
         } else {
             allArticles.filter { it.sourceId == selectedSourceId }
+        }
+        val base = if (homeSettings.unreadOnlyFilter) {
+            bySource.filter { !it.read }
+        } else {
+            bySource
         }
         base.sortedWith(compareBy<ArticleEntity> { it.read }.thenByDescending { it.publishedTime })
     }
@@ -322,7 +328,21 @@ fun HomeScreen(
                 onMarkAllAsReadClick = {
                     coroutineScope.launch {
                         haptics.pop()
-                        repository.markAllAsRead(selectedSourceId)
+                        val markedIds = repository.markAllAsReadWithUndo(selectedSourceId)
+                        if (markedIds.isNotEmpty()) {
+                            undoMarkReadIds = markedIds
+                            toastMessage = "Marked ${markedIds.size} as read"
+                            delay(4000)
+                            if (toastMessage?.startsWith("Marked") == true) {
+                                toastMessage = null
+                                undoMarkReadIds = emptyList()
+                            }
+                        } else {
+                            undoMarkReadIds = emptyList()
+                            toastMessage = "All articles already read"
+                            delay(1800)
+                            toastMessage = null
+                        }
                     }
                 },
                 onLogoClick = { triggerRefresh() },
@@ -473,6 +493,11 @@ fun HomeScreen(
                                             repository.toggleSaved(article.id)
                                         }
                                     },
+                                    onToggleRead = {
+                                        coroutineScope.launch {
+                                            repository.toggleRead(article.id)
+                                        }
+                                    },
                                     sharedTransitionScope = sharedTransitionScope,
                                     animatedVisibilityScope = animatedVisibilityScope
                                 )
@@ -550,11 +575,13 @@ fun HomeScreen(
                 .statusBarsPadding()
                 .padding(top = 70.dp)
         ) {
-            Box(
+            Row(
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(colors.ink)
-                    .padding(horizontal = 18.dp, vertical = 10.dp)
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
                     text = toastMessage ?: "",
@@ -562,6 +589,23 @@ fun HomeScreen(
                     fontSize = 13.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
                 )
+                if (undoMarkReadIds.isNotEmpty()) {
+                    Text(
+                        text = "Undo",
+                        color = colors.accent,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable {
+                            val idsToRestore = undoMarkReadIds
+                            undoMarkReadIds = emptyList()
+                            toastMessage = null
+                            coroutineScope.launch {
+                                haptics.tick()
+                                repository.undoMarkAllAsRead(idsToRestore)
+                            }
+                        }
+                    )
+                }
             }
         }
 

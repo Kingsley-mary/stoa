@@ -23,6 +23,10 @@ class RefreshWorker(
             val db = SignalDatabase.getInstance(applicationContext)
             val repository = FeedRepository(db)
             val newCount = repository.refreshAllFollowedSources()
+            val settings = com.signal.reader.data.local.SettingsManager(applicationContext).settingsFlow.value
+            if (settings.offlinePreExtract) {
+                repository.preExtractRecentArticles(8)
+            }
             repository.pruneOldUnsavedArticles()
             android.util.Log.d("StoaRefreshWorker", "Completed background feed refresh: $newCount new articles")
             Result.success()

@@ -21,11 +21,27 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +70,7 @@ import com.signal.reader.ui.components.SignalTab
 import com.signal.reader.ui.components.UpdateDialog
 import com.signal.reader.ui.home.HomeScreen
 import com.signal.reader.ui.onboarding.InterestsOnboardingScreen
+import com.signal.reader.ui.reader.AudioPlaybackStatus
 import com.signal.reader.ui.reader.ReaderScreen
 import com.signal.reader.ui.saved.SavedScreen
 import com.signal.reader.ui.search.SearchScreen
@@ -72,6 +89,10 @@ class MainActivity : ComponentActivity() {
     private val navDestination = mutableStateOf<String?>(null)
     private val navArticleId = mutableStateOf<Long?>(null)
     private val navShareQuote = mutableStateOf<String?>(null)
+
+    private val notifPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* user handled permission dialog */ }
 
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
@@ -105,10 +126,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val permissionCheck = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
             if (permissionCheck != PackageManager.PERMISSION_GRANTED) {
-                val notifLauncher = registerForActivityResult(
-                    ActivityResultContracts.RequestPermission()
-                ) { /* user handled permission dialog */ }
-                notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
 
@@ -123,6 +141,8 @@ class MainActivity : ComponentActivity() {
                     initialArticleId = navArticleId.value,
                     initialDestination = navDestination.value,
                     initialShareQuote = navShareQuote.value,
+                    onArticleConsumed = { navArticleId.value = null },
+                    onDestinationConsumed = { navDestination.value = null },
                     onQuoteConsumed = { navShareQuote.value = null }
                 )
             }
@@ -144,6 +164,8 @@ fun SignalAppNav(
     initialArticleId: Long? = null,
     initialDestination: String? = null,
     initialShareQuote: String? = null,
+    onArticleConsumed: (() -> Unit)? = null,
+    onDestinationConsumed: (() -> Unit)? = null,
     onQuoteConsumed: (() -> Unit)? = null
 ) {
     val navController = rememberNavController()
@@ -166,12 +188,21 @@ fun SignalAppNav(
     }
 
     val colors = SignalTheme.colors
-    val startDestination = "splash"
+    // If launched via a deep-link (notification or widget), start directly on "home" so backstack is clean and splash doesn't yank navigation
+    val startDestination = remember {
+        if ((initialArticleId != null && initialArticleId > 0) || !initialDestination.isNullOrBlank()) {
+            "home"
+        } else {
+            "splash"
+        }
+    }
 
     val context = LocalContext.current
     val app = context.applicationContext as com.signal.reader.SignalApplication
     val updateManager = remember { app.updateManager }
     val updateState by updateManager.updateState.collectAsState()
+    val audioPlayer = remember { app.audioPlayer }
+    val audioState by audioPlayer.playbackState.collectAsState()
     var dismissedUpdateVersion by rememberSaveable { mutableStateOf<String?>(null) }
     var homeReselectTrigger by remember { mutableIntStateOf(0) }
 
@@ -179,15 +210,21 @@ fun SignalAppNav(
         updateManager.checkForUpdates(isSilent = true)
     }
 
-    LaunchedEffect(initialArticleId) {
-        if (initialArticleId != null && initialArticleId > 0) {
-            navController.navigate("reader/$initialArticleId")
+    LaunchedEffect(initialArticleId, currentRoute) {
+        if (initialArticleId != null && initialArticleId > 0 && currentRoute != null && currentRoute != "splash") {
+            navController.navigate("reader/$initialArticleId") {
+                launchSingleTop = true
+            }
+            onArticleConsumed?.invoke()
         }
     }
 
-    LaunchedEffect(initialDestination) {
-        if (initialDestination == "widget_settings") {
-            navController.navigate("widget_settings")
+    LaunchedEffect(initialDestination, currentRoute) {
+        if (!initialDestination.isNullOrBlank() && currentRoute != null && currentRoute != "splash") {
+            navController.navigate(initialDestination) {
+                launchSingleTop = true
+            }
+            onDestinationConsumed?.invoke()
         }
     }
 
@@ -203,37 +240,187 @@ fun SignalAppNav(
         navController.navigate(route)
     }
 
+    val activeReaderArticleId = if (currentRoute == "reader/{articleId}") {
+        navBackStackEntry?.arguments?.getLong("articleId")
+    } else null
+
+    val showMiniAudioBar = audioState.status != AudioPlaybackStatus.IDLE &&
+        (currentRoute != "reader/{articleId}" || activeReaderArticleId != audioState.articleId)
+
     Scaffold(
         containerColor = colors.bg,
         contentColor = colors.ink,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            AnimatedVisibility(
-                visible = isBottomBarVisible,
-                enter = fadeIn(tween(150)),
-                exit = fadeOut(tween(150))
-            ) {
-                SignalBottomBar(
-                    currentTab = currentTab,
-                    onTabSelected = { tab ->
-                        if (tab == currentTab && tab == SignalTab.HOME) {
-                            homeReselectTrigger++
-                        } else {
-                            val targetRoute = when (tab) {
-                                SignalTab.HOME -> "home"
-                                SignalTab.SAVED -> "saved"
-                                SignalTab.SOURCES -> "sources"
-                            }
-                            navController.navigate(targetRoute) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+            Column(modifier = Modifier.fillMaxWidth()) {
+                AnimatedVisibility(
+                    visible = showMiniAudioBar,
+                    enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 2 }),
+                    exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { it / 2 })
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(colors.card)
+                            .border(1.dp, colors.line, RoundedCornerShape(18.dp))
+                            .clickable {
+                                val targetId = audioState.articleId
+                                if (targetId != null && targetId > 0) {
+                                    navController.navigate("reader/$targetId") {
+                                        launchSingleTop = true
+                                    }
                                 }
-                                launchSingleTop = true
-                                restoreState = true
+                            }
+                    ) {
+                        // Subtle progress bar at top of mini player
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .background(colors.line)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(audioState.progressFraction)
+                                    .height(2.dp)
+                                    .background(colors.accent)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                if (audioState.sourceName.isNotBlank()) {
+                                    Text(
+                                        text = audioState.sourceName.uppercase(),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.accent,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    text = audioState.articleTitle.ifBlank { audioState.currentSentence },
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            // Speed pill
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .border(1.dp, colors.line, CircleShape)
+                                    .clickable { audioPlayer.cycleSpeed() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val speedLabel = if (audioState.speed % 1f == 0f) {
+                                    "${audioState.speed.toInt()}x"
+                                } else {
+                                    "${audioState.speed}x"
+                                }
+                                Text(
+                                    text = speedLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.ink
+                                )
+                            }
+
+                            // Play / Pause pill
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.ink)
+                                    .clickable {
+                                        if (audioState.status == AudioPlaybackStatus.PLAYING) {
+                                            audioPlayer.pause()
+                                        } else {
+                                            audioPlayer.resume()
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (audioState.status == AudioPlaybackStatus.PLAYING) "❚❚" else "▶",
+                                    fontSize = 11.sp,
+                                    color = colors.bg,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            // Skip Next
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .clickable { audioPlayer.skipNext() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "⏭",
+                                    fontSize = 13.sp,
+                                    color = colors.ink
+                                )
+                            }
+
+                            // Stop / Close
+                            Box(
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .clip(CircleShape)
+                                    .clickable { audioPlayer.stop() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "✕",
+                                    fontSize = 13.sp,
+                                    color = colors.mute
+                                )
                             }
                         }
                     }
-                )
+                }
+
+                AnimatedVisibility(
+                    visible = isBottomBarVisible,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(150))
+                ) {
+                    SignalBottomBar(
+                        currentTab = currentTab,
+                        onTabSelected = { tab ->
+                            if (tab == currentTab && tab == SignalTab.HOME) {
+                                homeReselectTrigger++
+                            } else {
+                                val targetRoute = when (tab) {
+                                    SignalTab.HOME -> "home"
+                                    SignalTab.SAVED -> "saved"
+                                    SignalTab.SOURCES -> "sources"
+                                }
+                                navController.navigate(targetRoute) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
+                        }
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -241,7 +428,7 @@ fun SignalAppNav(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.bg)
-                .padding(bottom = if (isBottomBarVisible) innerPadding.calculateBottomPadding() else 0.dp)
+                .padding(bottom = if (isBottomBarVisible || showMiniAudioBar) innerPadding.calculateBottomPadding() else 0.dp)
         ) {
             @OptIn(ExperimentalSharedTransitionApi::class)
             SharedTransitionLayout(

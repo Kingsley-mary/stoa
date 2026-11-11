@@ -32,6 +32,8 @@ class SignalApplication : Application(), ImageLoaderFactory {
     lateinit var notificationManager: com.signal.reader.data.notification.StoaNotificationManager
         private set
 
+    val audioPlayer by lazy { com.signal.reader.ui.reader.ArticleAudioPlayer(this) }
+
     override fun onCreate() {
         super.onCreate()
         instance = this

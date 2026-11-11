@@ -154,13 +154,13 @@ fun SettingsScreen(
         if (uri != null) {
             coroutineScope.launch(Dispatchers.IO) {
                 try {
-                    val dbSources = com.signal.reader.SignalApplication.instance.database.sourceDao().getAllSources()
+                    val dbSources = com.signal.reader.SignalApplication.instance.database.sourceDao().getFollowedSources()
                     val opmlString = OpmlManager.exportToOpml(dbSources)
                     context.contentResolver.openOutputStream(uri)?.use { os ->
                         os.write(opmlString.toByteArray())
                     }
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Exported sources to OPML", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Exported ${dbSources.size} sources to OPML", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
@@ -180,20 +180,33 @@ fun SettingsScreen(
                 try {
                     val stream = context.contentResolver.openInputStream(uri)
                     if (stream != null) {
-                        val outlines = OpmlManager.parseOpml(stream)
-                        var count = 0
-                        for (outline in outlines) {
-                            if (outline.xmlUrl.isNotBlank()) {
-                                repository.addSource(
-                                    name = outline.title,
-                                    siteUrl = outline.htmlUrl ?: outline.xmlUrl,
-                                    feedUrl = outline.xmlUrl
-                                )
-                                count++
+                        val outlines = stream.use { OpmlManager.parseOpml(it) }
+                        val batch = outlines.mapNotNull { outline ->
+                            val xml = outline.xmlUrl.trim()
+                            if (xml.isBlank()) return@mapNotNull null
+                            val site = outline.htmlUrl?.takeIf { it.isNotBlank() } ?: run {
+                                try {
+                                    val parsed = java.net.URI(xml)
+                                    val scheme = parsed.scheme ?: "https"
+                                    val host = parsed.host
+                                    if (!host.isNullOrBlank()) "$scheme://$host" else xml
+                                } catch (_: Exception) {
+                                    xml
+                                }
                             }
+                            com.signal.reader.data.feed.StarterSource(
+                                group = "Imported",
+                                name = outline.title.ifBlank { site },
+                                description = "",
+                                siteUrl = site,
+                                feedUrl = xml
+                            )
+                        }
+                        if (batch.isNotEmpty()) {
+                            repository.addSourcesBatch(batch)
                         }
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Imported $count sources from OPML", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Imported ${batch.size} sources from OPML", Toast.LENGTH_SHORT).show()
                         }
                     }
                 } catch (e: Exception) {
@@ -332,6 +345,19 @@ fun SettingsScreen(
                                 }
                             )
                         }
+
+                        SettingsRow(
+                            label = "Unread only",
+                            sublabel = "Hide read stories from the Home stream"
+                        ) {
+                            SignalSwitch(
+                                checked = settings.unreadOnlyFilter,
+                                onCheckedChange = { checked ->
+                                    haptics.tick()
+                                    settingsManager.updateUnreadOnlyFilter(checked)
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -433,6 +459,24 @@ fun SettingsScreen(
                                                 wifiOnly = checked,
                                                 enabled = true
                                             )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        // Pre-extract full articles for offline reading
+                        Box(modifier = Modifier.alpha(if (isBgEnabled) 1.0f else 0.4f)) {
+                            SettingsRow(
+                                label = "Pre-extract full articles",
+                                sublabel = "Download full text in the background for offline reading"
+                            ) {
+                                SignalSwitch(
+                                    checked = settings.offlinePreExtract,
+                                    onCheckedChange = { checked ->
+                                        if (isBgEnabled) {
+                                            haptics.tick()
+                                            settingsManager.updateOfflinePreExtract(checked)
                                         }
                                     }
                                 )
@@ -628,7 +672,7 @@ fun SettingsScreen(
 
                         SettingsActionRow(
                             label = "What’s new in Stoa",
-                            sublabel = "Release notes for v1.4.15, v1.4.14 & v1.4.13",
+                            sublabel = "Release notes for v1.5.0, v1.4.20 & v1.4.19",
                             onClick = { showWhatsNewDialog = true }
                         )
 

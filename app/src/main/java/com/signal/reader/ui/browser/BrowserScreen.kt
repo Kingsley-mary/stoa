@@ -41,6 +41,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -113,6 +114,25 @@ fun BrowserScreen(
     var canGoForward by remember { mutableStateOf(false) }
     var isMinimized by remember { mutableStateOf(false) }
     var isSaved by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentUrl, articleId) {
+        val repo = repository ?: com.signal.reader.SignalApplication.instance.repository
+        val existing = if (articleId != null && articleId > 0) {
+            com.signal.reader.SignalApplication.instance.database.articleDao().getArticleById(articleId)
+        } else {
+            repo.findArticleByLinkOrGuid(currentUrl, currentUrl.trimEnd('/'))
+        }
+        isSaved = existing?.saved == true
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                webView?.stopLoading()
+                webView?.destroy()
+            } catch (_: Exception) {}
+        }
+    }
 
     var isNoteDismissed by remember { mutableStateOf(false) }
     val isMeteredSite = remember(currentUrl) {
@@ -629,8 +649,11 @@ fun BrowserScreen(
                                     coroutineScope.launch {
                                         bookmarkPop.snapTo(0.6f)
                                         bookmarkPop.animateTo(1.0f, SignalMotion.PopSpringSpec)
-                                        articleId?.let { id ->
-                                            repository?.toggleSaved(id)
+                                        val repo = repository ?: com.signal.reader.SignalApplication.instance.repository
+                                        if (articleId != null && articleId > 0) {
+                                            repo.toggleSaved(articleId)
+                                        } else {
+                                            isSaved = repo.saveOrToggleWebUrl(currentUrl, currentTitle)
                                         }
                                     }
                                 },

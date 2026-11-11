@@ -4,8 +4,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+
+sealed class ConditionalFetchResult {
+    object NotModified : ConditionalFetchResult()
+    data class Modified(
+        val parsedFeed: ParsedFeed,
+        val etag: String?,
+        val lastModified: String?
+    ) : ConditionalFetchResult()
+}
 
 class FeedFetcher(
     private val client: OkHttpClient = createDefaultClient()
@@ -26,16 +36,7 @@ class FeedFetcher(
                 throw IOException("Unexpected HTTP response code ${response.code} for $url")
             }
             val responseBody = response.body ?: throw IOException("Empty response body for $url")
-            val maxBytes = 5 * 1024 * 1024 // 5 MB cap
-            val body = responseBody.byteStream().use { input ->
-                val buffer = ByteArray(maxBytes)
-                var total = 0
-                var read = 0
-                while (total < maxBytes && input.read(buffer, total, maxBytes - total).also { read = it } != -1) {
-                    total += read
-                }
-                String(buffer, 0, total, Charsets.UTF_8)
-            }
+            val body = readCappedBodyString(responseBody)
             val contentType = response.header("Content-Type")
             Pair(body, contentType)
         }
@@ -46,8 +47,66 @@ class FeedFetcher(
         FeedParser.parse(content, feedUrl)
     }
 
+    suspend fun fetchAndParseConditional(
+        feedUrl: String,
+        etag: String? = null,
+        lastModified: String? = null
+    ): ConditionalFetchResult = withContext(Dispatchers.IO) {
+        if (!feedUrl.startsWith("http://", ignoreCase = true) && !feedUrl.startsWith("https://", ignoreCase = true)) {
+            throw IllegalArgumentException("Only HTTP and HTTPS URLs are accepted: $feedUrl")
+        }
+
+        val requestBuilder = Request.Builder()
+            .url(feedUrl)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.9, */*;q=0.8")
+
+        if (!etag.isNullOrBlank()) {
+            requestBuilder.header("If-None-Match", etag)
+        }
+        if (!lastModified.isNullOrBlank()) {
+            requestBuilder.header("If-Modified-Since", lastModified)
+        }
+
+        client.newCall(requestBuilder.build()).execute().use { response ->
+            if (response.code == 304) {
+                return@use ConditionalFetchResult.NotModified
+            }
+            if (!response.isSuccessful) {
+                throw IOException("Unexpected HTTP response code ${response.code} for $feedUrl")
+            }
+            val responseBody = response.body ?: throw IOException("Empty response body for $feedUrl")
+            val body = readCappedBodyString(responseBody)
+            val parsed = FeedParser.parse(body, feedUrl)
+            val newEtag = response.header("ETag")
+            val newLastModified = response.header("Last-Modified")
+            ConditionalFetchResult.Modified(
+                parsedFeed = parsed,
+                etag = newEtag,
+                lastModified = newLastModified
+            )
+        }
+    }
+
+    private fun readCappedBodyString(responseBody: okhttp3.ResponseBody): String {
+        val maxBytes = 5 * 1024 * 1024 // 5 MB cap without upfront 5 MB allocation
+        return responseBody.byteStream().use { input ->
+            val out = ByteArrayOutputStream(32 * 1024)
+            val chunk = ByteArray(8192)
+            var total = 0
+            while (total < maxBytes) {
+                val toRead = minOf(chunk.size, maxBytes - total)
+                val read = input.read(chunk, 0, toRead)
+                if (read == -1) break
+                out.write(chunk, 0, read)
+                total += read
+            }
+            out.toString(Charsets.UTF_8.name())
+        }
+    }
+
     companion object {
-        const val USER_AGENT = "StoaReader/1.4 (Android; RSS Reader; +https://github.com/stoa/reader)"
+        const val USER_AGENT = "StoaReader/1.5 (Android; RSS Reader; +https://github.com/Kingsley-mary/stoa)"
 
         fun createDefaultClient(): OkHttpClient {
             return OkHttpClient.Builder()

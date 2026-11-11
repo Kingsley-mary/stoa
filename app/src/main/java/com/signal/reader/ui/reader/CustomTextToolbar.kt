@@ -13,7 +13,8 @@ import androidx.compose.ui.platform.TextToolbarStatus
 
 class CustomTextToolbar(
     private val view: View,
-    private val onShareQuote: (String) -> Unit
+    private val onShareQuote: (String) -> Unit,
+    private val onHighlightQuote: ((String) -> Unit)? = null
 ) : TextToolbar {
 
     private var actionMode: ActionMode? = null
@@ -24,6 +25,7 @@ class CustomTextToolbar(
 
     companion object {
         private const val MENU_SHARE_QUOTE_ID = 10001
+        private const val MENU_HIGHLIGHT_ID = 10002
     }
 
     override fun showMenu(
@@ -42,6 +44,12 @@ class CustomTextToolbar(
                 // Add "Share quote" as the primary action
                 menu.add(Menu.NONE, MENU_SHARE_QUOTE_ID, 0, "Share quote").apply {
                     setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+                }
+
+                if (onHighlightQuote != null) {
+                    menu.add(Menu.NONE, MENU_HIGHLIGHT_ID, 1, "Highlight").apply {
+                        setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+                    }
                 }
 
                 if (onCopyRequested != null) {
@@ -79,6 +87,16 @@ class CustomTextToolbar(
                             onShareQuote(clipText)
                         }
 
+                        mode?.finish()
+                        true
+                    }
+                    MENU_HIGHLIGHT_ID -> {
+                        onCopyRequested?.invoke()
+                        val clipboard = view.context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString()
+                        if (!clipText.isNullOrBlank()) {
+                            onHighlightQuote?.invoke(clipText)
+                        }
                         mode?.finish()
                         true
                     }

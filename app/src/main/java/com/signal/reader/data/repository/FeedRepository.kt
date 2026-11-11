@@ -1,15 +1,18 @@
 package com.signal.reader.data.repository
 
+import com.signal.reader.data.feed.ConditionalFetchResult
 import com.signal.reader.data.feed.DiscoveryResult
 import com.signal.reader.data.feed.FeedDiscovery
 import com.signal.reader.data.feed.FeedFetcher
 import com.signal.reader.data.feed.ImageResolver
 import com.signal.reader.data.feed.ParsedArticle
+import com.signal.reader.data.feed.ReadabilityExtractor
 import com.signal.reader.data.feed.StarterSource
 import com.signal.reader.data.feed.StarterSources
 import com.signal.reader.data.local.SignalDatabase
 import com.signal.reader.data.local.dao.SourceWithUnreadCount
 import com.signal.reader.data.local.entity.ArticleEntity
+import com.signal.reader.data.local.entity.HighlightEntity
 import com.signal.reader.data.local.entity.SourceEntity
 import okhttp3.Request
 import org.jsoup.Jsoup
@@ -40,6 +43,36 @@ class FeedRepository(
 
     private val sourceDao = database.sourceDao()
     private val articleDao = database.articleDao()
+    private val highlightDao = database.highlightDao()
+
+    fun getAllHighlightsFlow(): Flow<List<HighlightEntity>> = highlightDao.getAllHighlightsFlow()
+
+    fun getHighlightsForArticleFlow(articleId: Long): Flow<List<HighlightEntity>> =
+        highlightDao.getHighlightsForArticleFlow(articleId)
+
+    suspend fun addHighlight(
+        articleId: Long,
+        articleTitle: String,
+        sourceName: String,
+        quoteText: String,
+        note: String? = null
+    ): Long = withContext(Dispatchers.IO) {
+        val cleanQuote = quoteText.trim()
+        if (cleanQuote.isBlank()) return@withContext -1L
+        highlightDao.insert(
+            HighlightEntity(
+                articleId = articleId,
+                articleTitle = articleTitle,
+                sourceName = sourceName,
+                quoteText = cleanQuote,
+                note = note
+            )
+        )
+    }
+
+    suspend fun deleteHighlight(id: Long) = withContext(Dispatchers.IO) {
+        highlightDao.deleteById(id)
+    }
 
     fun getFollowedSourcesFlow(): Flow<List<SourceEntity>> = sourceDao.getFollowedSourcesFlow()
 
@@ -133,10 +166,15 @@ class FeedRepository(
             }
         }
 
-        // Fetch in background concurrently
+        // Fetch in background with bounded concurrency (Semaphore(6))
         repoScope.launch {
+            val batchSemaphore = Semaphore(6)
             idsToRefresh.forEach { id ->
-                launch { refreshSource(id) }
+                launch {
+                    batchSemaphore.withPermit {
+                        refreshSource(id)
+                    }
+                }
             }
         }
 
@@ -176,6 +214,36 @@ class FeedRepository(
         sourceDao.setMuted(sourceId, muted)
     }
 
+    suspend fun setPinned(sourceId: Long, pinned: Boolean) = withContext(Dispatchers.IO) {
+        sourceDao.setPinned(sourceId, pinned)
+    }
+
+    suspend fun togglePinned(sourceId: Long): Boolean = withContext(Dispatchers.IO) {
+        val s = sourceDao.getSourceById(sourceId) ?: return@withContext false
+        val next = !s.isPinned
+        sourceDao.setPinned(sourceId, next)
+        next
+    }
+
+    suspend fun repairSourceFeed(sourceId: Long): Boolean = withContext(Dispatchers.IO) {
+        val source = sourceDao.getSourceById(sourceId) ?: return@withContext false
+        try {
+            val disc = discovery.discover(source.siteUrl.ifBlank { source.feedUrl })
+            if (disc is DiscoveryResult.Found) {
+                sourceDao.updateFeedUrl(sourceId, disc.feedUrl)
+                val newArticles = saveArticles(source.copy(feedUrl = disc.feedUrl), disc.parsedFeed.items)
+                sourceDao.recordSuccess(sourceId, System.currentTimeMillis())
+                crawlMissingImages()
+                return@withContext true
+            }
+            val refreshed = refreshSource(sourceId)
+            val updated = sourceDao.getSourceById(sourceId)
+            updated?.isBroken == false || refreshed > 0
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun notifyWidgetUpdate() {
         try {
             com.signal.reader.widget.StoaWidgetProvider.updateAllWidgets(com.signal.reader.SignalApplication.instance)
@@ -187,10 +255,48 @@ class FeedRepository(
         notifyWidgetUpdate()
     }
 
+    suspend fun toggleRead(articleId: Long): Boolean = withContext(Dispatchers.IO) {
+        val article = articleDao.getArticleById(articleId) ?: return@withContext false
+        val newRead = !article.read
+        articleDao.setRead(articleId, newRead)
+        notifyWidgetUpdate()
+        newRead
+    }
+
     suspend fun toggleSaved(articleId: Long) = withContext(Dispatchers.IO) {
         val article = articleDao.getArticleById(articleId) ?: return@withContext
         val newSaved = !article.saved
         articleDao.setSaved(articleId, newSaved, if (newSaved) System.currentTimeMillis() else null)
+    }
+
+    suspend fun saveOrToggleWebUrl(url: String, title: String): Boolean = withContext(Dispatchers.IO) {
+        val cleanUrl = url.trim()
+        if (cleanUrl.isBlank()) return@withContext false
+        val existing = articleDao.findArticleByLinkOrGuid(cleanUrl, cleanUrl.trimEnd('/'))
+        if (existing != null) {
+            val nextSaved = !existing.saved
+            articleDao.setSaved(existing.id, nextSaved, if (nextSaved) System.currentTimeMillis() else null)
+            return@withContext nextSaved
+        }
+        val host = try {
+            java.net.URI(cleanUrl).host?.removePrefix("www.") ?: "Web"
+        } catch (_: Exception) {
+            "Web"
+        }
+        val entity = ArticleEntity(
+            sourceId = 0L,
+            sourceName = host.replaceFirstChar { it.uppercase() },
+            guid = cleanUrl,
+            title = title.ifBlank { cleanUrl },
+            excerpt = "",
+            url = cleanUrl,
+            publishedTime = System.currentTimeMillis(),
+            read = true,
+            saved = true,
+            savedTime = System.currentTimeMillis()
+        )
+        articleDao.insertIgnore(entity)
+        true
     }
 
     suspend fun markAllAsRead(sourceId: Long? = null) = withContext(Dispatchers.IO) {
@@ -203,12 +309,62 @@ class FeedRepository(
         notifyWidgetUpdate()
     }
 
+    suspend fun markAllAsReadWithUndo(sourceId: Long? = null): List<Long> = withContext(Dispatchers.IO) {
+        val unreadIds = if (sourceId != null) {
+            articleDao.getUnreadArticleIdsForSources(listOf(sourceId))
+        } else {
+            val followed = sourceDao.getFollowedSources().map { it.id }
+            if (followed.isEmpty()) emptyList() else articleDao.getUnreadArticleIdsForSources(followed)
+        }
+        if (unreadIds.isNotEmpty()) {
+            if (sourceId != null) {
+                articleDao.markAllAsReadForSources(listOf(sourceId))
+            } else {
+                val followed = sourceDao.getFollowedSources().map { it.id }
+                articleDao.markAllAsReadForSources(followed)
+            }
+            notifyWidgetUpdate()
+        }
+        unreadIds
+    }
+
+    suspend fun undoMarkAllAsRead(articleIds: List<Long>) = withContext(Dispatchers.IO) {
+        if (articleIds.isEmpty()) return@withContext
+        articleDao.markArticlesUnread(articleIds)
+        notifyWidgetUpdate()
+    }
+
     suspend fun refreshSource(sourceId: Long): Int = withContext(Dispatchers.IO) {
         val source = sourceDao.getSourceById(sourceId) ?: return@withContext 0
         try {
             articleDao.resetFailedArticleImages()
+            var newEtag: String? = null
+            var newLastModified: String? = null
+            val existingArticleCount = articleDao.getArticleCountForSource(sourceId)
+
             val parsedFeed = try {
-                fetcher.fetchAndParse(source.feedUrl)
+                if (existingArticleCount > 0 && (!source.etag.isNullOrBlank() || !source.lastModified.isNullOrBlank())) {
+                    when (val cond = fetcher.fetchAndParseConditional(source.feedUrl, source.etag, source.lastModified)) {
+                        is ConditionalFetchResult.NotModified -> {
+                            sourceDao.recordSuccess(sourceId, System.currentTimeMillis())
+                            return@withContext 0
+                        }
+                        is ConditionalFetchResult.Modified -> {
+                            newEtag = cond.etag
+                            newLastModified = cond.lastModified
+                            cond.parsedFeed
+                        }
+                    }
+                } else {
+                    when (val cond = fetcher.fetchAndParseConditional(source.feedUrl)) {
+                        is ConditionalFetchResult.NotModified -> return@withContext 0
+                        is ConditionalFetchResult.Modified -> {
+                            newEtag = cond.etag
+                            newLastModified = cond.lastModified
+                            cond.parsedFeed
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 // Fallback 1: try flipping protocol http <-> https
                 val altProtocolUrl = if (source.feedUrl.startsWith("http://", ignoreCase = true)) {
@@ -239,7 +395,7 @@ class FeedRepository(
             }
 
             val newArticles = saveArticles(source, parsedFeed.items)
-            sourceDao.recordSuccess(sourceId, System.currentTimeMillis())
+            sourceDao.recordSuccessWithHeaders(sourceId, System.currentTimeMillis(), newEtag, newLastModified)
             if (newArticles.isNotEmpty()) {
                 if (source.notificationsEnabled) {
                     try {
@@ -261,10 +417,13 @@ class FeedRepository(
         articleDao.resetFailedArticleImages()
         val sources = sourceDao.getFollowedSources()
         var totalNew = 0
+        val refreshSemaphore = Semaphore(6)
         coroutineScope {
             val tasks = sources.map { source ->
                 async {
-                    refreshSource(source.id)
+                    refreshSemaphore.withPermit {
+                        refreshSource(source.id)
+                    }
                 }
             }
             totalNew = tasks.awaitAll().sum()
@@ -459,11 +618,39 @@ class FeedRepository(
         all.filter { article ->
             val sourceMatch = matchingSourceNames.isNotEmpty() && matchingSourceNames.any { it.equals(article.sourceName, ignoreCase = true) }
             val textMatch = words.isNotEmpty() && words.all { w ->
-                val haystack = "${article.title} ${article.excerpt} ${article.sourceName}".lowercase()
+                val haystack = "${article.title} ${article.excerpt} ${article.sourceName} ${article.author.orEmpty()} ${article.fullContent.orEmpty()}".lowercase()
                 haystack.contains(w)
             }
             sourceMatch || textMatch
         }
+    }
+
+    suspend fun preExtractRecentArticles(limit: Int = 8) = withContext(Dispatchers.IO) {
+        try {
+            val recent = articleDao.getAllSearchableArticles()
+                .filter { !it.read && it.url.isNotBlank() && (it.isExcerptOnly || (it.fullContent?.length ?: 0) < 650) }
+                .take(limit)
+            if (recent.isEmpty()) return@withContext
+            val sem = Semaphore(2)
+            coroutineScope {
+                recent.map { article ->
+                    async {
+                        sem.withPermit {
+                            val extracted = runCatching { ReadabilityExtractor.extract(article.url) }.getOrNull()
+                            if (!extracted.isNullOrBlank()) {
+                                articleDao.updateFullContent(article.id, extracted, false)
+                                if (article.imageUrl.isNullOrBlank() || article.imageUrl == "none") {
+                                    val firstImg = ImageResolver.extractFromHtml(extracted, article.url)
+                                    if (!firstImg.isNullOrBlank()) {
+                                        articleDao.updateImageUrl(article.id, firstImg)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+        } catch (_: Exception) {}
     }
 
     suspend fun pruneOldUnsavedArticles(): Int = withContext(Dispatchers.IO) {

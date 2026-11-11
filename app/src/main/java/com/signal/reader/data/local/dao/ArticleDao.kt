@@ -18,24 +18,41 @@ data class SourceWithUnreadCount(
 interface ArticleDao {
 
     @Query("""
-        SELECT a.* FROM articles a
+        SELECT a.id, a.sourceId, a.sourceName, a.guid, a.title, a.excerpt,
+               CASE WHEN a.fullContent IS NOT NULL AND LENGTH(a.fullContent) > 2500
+                    THEN SUBSTR(a.fullContent, 1, 2500)
+                    ELSE a.fullContent END AS fullContent,
+               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url
+        FROM articles a
         INNER JOIN sources s ON a.sourceId = s.id
         WHERE s.followed = 1 AND s.muted = 0
         ORDER BY a.publishedTime DESC
+        LIMIT 800
     """)
     fun getHomeStreamFlow(): Flow<List<ArticleEntity>>
 
     @Query("""
-        SELECT * FROM articles
-        WHERE sourceId = :sourceId
-        ORDER BY publishedTime DESC
+        SELECT a.id, a.sourceId, a.sourceName, a.guid, a.title, a.excerpt,
+               CASE WHEN a.fullContent IS NOT NULL AND LENGTH(a.fullContent) > 2500
+                    THEN SUBSTR(a.fullContent, 1, 2500)
+                    ELSE a.fullContent END AS fullContent,
+               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url
+        FROM articles a
+        WHERE a.sourceId = :sourceId
+        ORDER BY a.publishedTime DESC
+        LIMIT 400
     """)
     fun getArticlesBySourceFlow(sourceId: Long): Flow<List<ArticleEntity>>
 
     @Query("""
-        SELECT * FROM articles
-        WHERE saved = 1
-        ORDER BY savedTime DESC, publishedTime DESC
+        SELECT a.id, a.sourceId, a.sourceName, a.guid, a.title, a.excerpt,
+               CASE WHEN a.fullContent IS NOT NULL AND LENGTH(a.fullContent) > 2500
+                    THEN SUBSTR(a.fullContent, 1, 2500)
+                    ELSE a.fullContent END AS fullContent,
+               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url
+        FROM articles a
+        WHERE a.saved = 1
+        ORDER BY a.savedTime DESC, a.publishedTime DESC
     """)
     fun getSavedArticlesFlow(): Flow<List<ArticleEntity>>
 
@@ -88,6 +105,15 @@ interface ArticleDao {
     @Query("SELECT * FROM articles WHERE (imageUrl IS NULL OR imageUrl = '' OR imageUrl = 'none') AND url IS NOT NULL AND url != '' ORDER BY publishedTime DESC LIMIT :limit")
     suspend fun getArticlesWithoutImage(limit: Int = 150): List<ArticleEntity>
 
+    @Query("SELECT id FROM articles WHERE sourceId IN (:sourceIds) AND read = 0")
+    suspend fun getUnreadArticleIdsForSources(sourceIds: List<Long>): List<Long>
+
+    @Query("SELECT id FROM articles WHERE read = 0")
+    suspend fun getUnreadArticleIdsAll(): List<Long>
+
+    @Query("UPDATE articles SET read = 0 WHERE id IN (:ids)")
+    suspend fun markArticlesUnread(ids: List<Long>)
+
     @Query("UPDATE articles SET read = 1 WHERE sourceId IN (:sourceIds) AND read = 0")
     suspend fun markAllAsReadForSources(sourceIds: List<Long>)
 
@@ -132,10 +158,16 @@ interface ArticleDao {
     suspend fun getLatestArticleTimeForSource(sourceId: Long): Long?
 
     @Query("""
-        SELECT a.* FROM articles a
+        SELECT a.id, a.sourceId, a.sourceName, a.guid, a.title, a.excerpt,
+               CASE WHEN a.fullContent IS NOT NULL AND LENGTH(a.fullContent) > 4000
+                    THEN SUBSTR(a.fullContent, 1, 4000)
+                    ELSE a.fullContent END AS fullContent,
+               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url
+        FROM articles a
         LEFT JOIN sources s ON a.sourceId = s.id
         WHERE (s.followed = 1 OR a.saved = 1)
         ORDER BY a.publishedTime DESC
+        LIMIT 600
     """)
     suspend fun getAllSearchableArticles(): List<ArticleEntity>
 

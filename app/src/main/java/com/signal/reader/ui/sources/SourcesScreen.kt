@@ -59,8 +59,11 @@ fun SourcesScreen(
     val unreadMap = unreadCounts.associate { it.sourceId to it.unreadCount }
     val latestMap = unreadCounts.associate { it.sourceId to it.latestArticleTime }
 
-    // Order by most recent article
-    val orderedSources = sources.sortedByDescending { latestMap[it.id] ?: it.lastFetched }
+    // Order by pinned first, then most recent article
+    val orderedSources = sources.sortedWith(
+        compareByDescending<SourceEntity> { it.isPinned }
+            .thenByDescending { latestMap[it.id] ?: it.lastFetched }
+    )
 
     Column(
         modifier = modifier
@@ -228,13 +231,26 @@ private fun SourceRow(
                     .alpha(if (source.muted) 0.5f else 1.0f),
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                Text(
-                    text = source.name,
-                    color = colors.ink,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    letterSpacing = (-0.01).sp
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = source.name,
+                        color = colors.ink,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        letterSpacing = (-0.01).sp
+                    )
+                    if (source.isPinned) {
+                        Text(
+                            text = "★",
+                            color = colors.accent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
                 Text(
                     text = subtitle,
                     color = colors.mute,

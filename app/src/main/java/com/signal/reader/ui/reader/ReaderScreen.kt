@@ -30,6 +30,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -295,14 +297,8 @@ fun ReaderScreen(
     var showShareSheet by remember(initialShareQuote) { mutableStateOf(!initialShareQuote.isNullOrBlank()) }
     var pendingShareQuote by remember(initialShareQuote) { mutableStateOf(initialShareQuote) }
 
-    val audioPlayer = remember { ArticleAudioPlayer(context) }
+    val audioPlayer = remember { (context.applicationContext as com.signal.reader.SignalApplication).audioPlayer }
     val audioState by audioPlayer.playbackState.collectAsState()
-
-    DisposableEffect(Unit) {
-        onDispose {
-            audioPlayer.destroy()
-        }
-    }
 
     val effectiveHeroImage = remember(currentArticle.imageUrl, currentArticle.fullContent, currentArticle.excerpt, extractedHtml) {
         val candidate = currentArticle.imageUrl.takeIf { !it.isNullOrBlank() && it != "none" }
@@ -348,11 +344,25 @@ fun ReaderScreen(
     }
 
     val view = LocalView.current
-    val customTextToolbar = remember(view) {
-        CustomTextToolbar(view) { quoteText ->
-            pendingShareQuote = quoteText
-            showShareSheet = true
-        }
+    val customTextToolbar = remember(view, currentArticle.id) {
+        CustomTextToolbar(
+            view = view,
+            onShareQuote = { quoteText ->
+                pendingShareQuote = quoteText
+                showShareSheet = true
+            },
+            onHighlightQuote = { quoteText ->
+                coroutineScope.launch {
+                    repository.addHighlight(
+                        articleId = currentArticle.id,
+                        articleTitle = currentArticle.title,
+                        sourceName = currentArticle.sourceName,
+                        quoteText = quoteText
+                    )
+                    android.widget.Toast.makeText(context, "Saved to Highlights", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
     }
 
     CompositionLocalProvider(LocalTextToolbar provides customTextToolbar) {
@@ -429,8 +439,10 @@ fun ReaderScreen(
                                             currentArticle.excerpt.ifBlank { currentArticle.title }
                                         }
                                         audioPlayer.togglePlayPause(
-                                            currentArticle.title,
-                                            textToSpeak
+                                            title = currentArticle.title,
+                                            bodyText = textToSpeak,
+                                            articleId = currentArticle.id,
+                                            sourceName = currentArticle.sourceName
                                         )
                                     },
                                 contentAlignment = Alignment.Center
@@ -655,6 +667,56 @@ fun ReaderScreen(
                     }
                 }
 
+                // Next unread story card + Related articles from followed sources (#related)
+                val nextUnreadStory = relatedArticles.firstOrNull { !it.read && it.id != currentArticle.id }
+                if (nextUnreadStory != null && onOpenArticle != null) {
+                    item(key = "next_unread_story_${nextUnreadStory.id}") {
+                        Spacer(modifier = Modifier.height(28.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(colors.card)
+                                .border(1.dp, colors.line, RoundedCornerShape(18.dp))
+                                .signalPressScale(0.98f) {
+                                    haptics.tick()
+                                    onOpenArticle(nextUnreadStory.id)
+                                }
+                                .padding(horizontal = 18.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "NEXT UNREAD STORY",
+                                    color = colors.accent,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                                Text(
+                                    text = "${nextUnreadStory.sourceName} →",
+                                    color = colors.mute,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Text(
+                                text = nextUnreadStory.title,
+                                color = colors.ink,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = 22.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
                 // Related articles from followed sources (#related) matching updated reader-mockup.html
                 if (relatedArticles.isNotEmpty()) {
                     item(key = "related_header") {
@@ -675,6 +737,11 @@ fun ReaderScreen(
                             onToggleSave = {
                                 coroutineScope.launch {
                                     repository.toggleSaved(related.id)
+                                }
+                            },
+                            onToggleRead = {
+                                coroutineScope.launch {
+                                    repository.toggleRead(related.id)
                                 }
                             }
                         )
@@ -956,8 +1023,10 @@ fun ReaderScreen(
                                         currentArticle.excerpt.ifBlank { currentArticle.title }
                                     }
                                     audioPlayer.togglePlayPause(
-                                        currentArticle.title,
-                                        textToSpeak
+                                        title = currentArticle.title,
+                                        bodyText = textToSpeak,
+                                        articleId = currentArticle.id,
+                                        sourceName = currentArticle.sourceName
                                     )
                                 },
                             contentAlignment = Alignment.Center
@@ -983,6 +1052,44 @@ fun ReaderScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        // Skip back sentence
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    haptics.tick()
+                                    audioPlayer.skipPrevious()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "«",
+                                color = if (isDarkActive) colors.ink else colors.bg,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Skip forward sentence
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    haptics.tick()
+                                    audioPlayer.skipNext()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "»",
+                                color = if (isDarkActive) colors.ink else colors.bg,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
                         // Speed button
                         Box(
                             modifier = Modifier
@@ -1175,6 +1282,8 @@ private sealed class ContentBlock {
     ) : ContentBlock()
     data class Quote(val text: String) : ContentBlock()
     data class BulletList(val items: List<String>, val htmlItems: List<String> = items) : ContentBlock()
+    data class CodeBlock(val code: String) : ContentBlock()
+    data class Table(val rows: List<List<String>>) : ContentBlock()
 }
 
 private fun extractYouTubeVideoId(url: String): String? {
@@ -1395,7 +1504,7 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
     val seenImages = mutableSetOf<String>()
     heroImageUrl?.let { seenImages.add(it.trim()) }
 
-    val elements = doc.body().select("p, h1, h2, h3, h4, figure, img, source, picture, blockquote, ul, ol, iframe, video, .in-content-video-embed")
+    val elements = doc.body().select("p, h1, h2, h3, h4, figure, img, source, picture, blockquote, ul, ol, pre, table, iframe, video, .in-content-video-embed")
     val processedElements = mutableSetOf<org.jsoup.nodes.Element>()
 
     for (el in elements) {
@@ -1725,6 +1834,23 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                     processedElements.addAll(el.getAllElements())
                 }
             }
+            el.tagName().equals("pre", ignoreCase = true) -> {
+                val codeText = el.wholeText().trim()
+                if (codeText.isNotBlank()) {
+                    blocks.add(ContentBlock.CodeBlock(codeText))
+                    processedElements.addAll(el.getAllElements())
+                }
+            }
+            el.tagName().equals("table", ignoreCase = true) -> {
+                val rows = el.select("tr").mapNotNull { tr ->
+                    val cells = tr.select("th, td").map { it.text().trim() }
+                    cells.takeIf { it.any { c -> c.isNotBlank() } }
+                }
+                if (rows.isNotEmpty()) {
+                    blocks.add(ContentBlock.Table(rows))
+                    processedElements.addAll(el.getAllElements())
+                }
+            }
         }
     }
 
@@ -1944,6 +2070,57 @@ private fun RenderContentBlock(
                             style = SignalTheme.typography.readerBody(fontSize, isSerif),
                             color = colors.ink
                         )
+                    }
+                }
+            }
+        }
+        is ContentBlock.CodeBlock -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.card)
+                    .border(1.dp, colors.line, RoundedCornerShape(14.dp))
+                    .horizontalScroll(rememberScrollState())
+                    .padding(14.dp)
+            ) {
+                Text(
+                    text = block.code,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    color = colors.ink
+                )
+            }
+        }
+        is ContentBlock.Table -> {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.card)
+                    .border(1.dp, colors.line, RoundedCornerShape(14.dp))
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                block.rows.forEachIndexed { rowIdx, row ->
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        row.forEach { cell ->
+                            Text(
+                                text = cell,
+                                fontSize = 13.sp,
+                                fontWeight = if (rowIdx == 0) FontWeight.Bold else FontWeight.Normal,
+                                color = colors.ink,
+                                modifier = Modifier.width(130.dp)
+                            )
+                        }
+                    }
+                    if (rowIdx < block.rows.lastIndex) {
+                        HorizontalDivider(color = colors.line, thickness = 1.dp)
                     }
                 }
             }
