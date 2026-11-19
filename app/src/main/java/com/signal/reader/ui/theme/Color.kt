@@ -16,6 +16,12 @@ val DarkCard = Color(0xFF242320)
 val DarkLine = Color(0x2EF1EDE4) // 18% ink
 
 val SignalAccent = Color(0xFFE4472B)
+val SignalSuccessLight = Color(0xFF2D6A4F)
+val SignalSuccessDark = Color(0xFF52B788)
+val SignalWarningLight = Color(0xFFB5651D)
+val SignalWarningDark = Color(0xFFE9A84B)
+val SignalErrorLight = Color(0xFFC1121F)
+val SignalErrorDark = Color(0xFFEF5350)
 
 @Immutable
 data class SignalColors(
@@ -24,7 +30,12 @@ data class SignalColors(
     val mute: Color,
     val card: Color,
     val line: Color,
-    val accent: Color = SignalAccent
+    val accent: Color = SignalAccent,
+    val highlightBg: Color = SignalAccent.copy(alpha = 0.22f),
+    val scrim: Color = Color(0x9910100F),
+    val success: Color = SignalSuccessLight,
+    val warning: Color = SignalWarningLight,
+    val error: Color = SignalErrorLight
 )
 
 val SignalLightColors = SignalColors(
@@ -33,7 +44,12 @@ val SignalLightColors = SignalColors(
     mute = LightMute,
     card = LightCard,
     line = LightLine,
-    accent = SignalAccent
+    accent = SignalAccent,
+    highlightBg = SignalAccent.copy(alpha = 0.20f),
+    scrim = Color(0x8C141413),
+    success = SignalSuccessLight,
+    warning = SignalWarningLight,
+    error = SignalErrorLight
 )
 
 val SignalDarkColors = SignalColors(
@@ -42,5 +58,10 @@ val SignalDarkColors = SignalColors(
     mute = DarkMute,
     card = DarkCard,
     line = DarkLine,
-    accent = SignalAccent
+    accent = SignalAccent,
+    highlightBg = SignalAccent.copy(alpha = 0.26f),
+    scrim = Color(0xA610100F),
+    success = SignalSuccessDark,
+    warning = SignalWarningDark,
+    error = SignalErrorDark
 )

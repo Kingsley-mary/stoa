@@ -18,6 +18,8 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -263,10 +265,10 @@ fun SignalAppNav(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(if (!isBottomBarVisible) Modifier.navigationBarsPadding() else Modifier)
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                            .clip(RoundedCornerShape(18.dp))
+                            .padding(horizontal = SignalTheme.spacing.md, vertical = SignalTheme.spacing.xs)
+                            .clip(SignalTheme.shapes.card)
                             .background(colors.card)
-                            .border(1.dp, colors.line, RoundedCornerShape(18.dp))
+                            .border(SignalTheme.sizing.borderWidth, colors.line, SignalTheme.shapes.card)
                             .clickable {
                                 val targetId = audioState.articleId
                                 if (targetId != null && targetId > 0) {
@@ -663,14 +665,18 @@ fun SignalAppNav(
                         )
                     }
 
-                    // Article Reader Screen with shared 500ms ease-out entrance
+                    // Article Reader Screen with cubic-bezier bloom + shared-element entrance
                     composable(
                         route = "reader/{articleId}",
                         arguments = listOf(navArgument("articleId") { type = NavType.LongType }),
                         enterTransition = {
                             fadeIn(SignalMotion.easeTween(SignalMotion.SharedElementDuration)) +
+                            scaleIn(
+                                initialScale = 0.94f,
+                                animationSpec = SignalMotion.easeTween(SignalMotion.SharedElementDuration)
+                            ) +
                             slideInVertically(
-                                initialOffsetY = { 60 },
+                                initialOffsetY = { 48 },
                                 animationSpec = SignalMotion.easeTween(SignalMotion.SharedElementDuration)
                             )
                         },
@@ -678,10 +684,14 @@ fun SignalAppNav(
                             fadeOut(SignalMotion.easeTween(250))
                         },
                         popExitTransition = {
-                            fadeOut(SignalMotion.easeTween(250)) +
+                            fadeOut(SignalMotion.easeTween(260)) +
+                            scaleOut(
+                                targetScale = 0.95f,
+                                animationSpec = SignalMotion.easeTween(260)
+                            ) +
                             slideOutVertically(
-                                targetOffsetY = { 60 },
-                                animationSpec = SignalMotion.easeTween(250)
+                                targetOffsetY = { 48 },
+                                animationSpec = SignalMotion.easeTween(260)
                             )
                         }
                     ) { backStackEntry ->

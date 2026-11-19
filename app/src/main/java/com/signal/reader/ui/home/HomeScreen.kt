@@ -6,10 +6,14 @@ import android.content.pm.verify.domain.DomainVerificationUserState
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -163,6 +167,9 @@ fun HomeScreen(
         if (selectedFolder.isNullOrBlank()) emptySet()
         else sources.filter { it.folder.trim().equals(selectedFolder, ignoreCase = true) }.map { it.id }.toSet()
     }
+
+    val isDeckMode = homeSettings.homeLayout == "deck"
+    val sourcesById = remember(sources) { sources.associateBy { it.id } }
 
     // First load word animation flag
     var hasAnimatedFirstLoad by remember { mutableStateOf(false) }
@@ -371,7 +378,21 @@ fun HomeScreen(
                     }
                 },
                 onLogoClick = { triggerRefresh() },
-                onJumpToReadClick = jumpToReadAction
+                onJumpToReadClick = if (isDeckMode) null else jumpToReadAction,
+                isDeckMode = isDeckMode,
+                onToggleDeckMode = {
+                    haptics.tick()
+                    val nextLayout = if (isDeckMode) "cards" else "deck"
+                    actualSettingsManager.updateHomeLayout(nextLayout)
+                    coroutineScope.launch {
+                        undoMarkReadIds = emptyList()
+                        toastMessage = if (nextLayout == "deck") "Deck mode" else "Feed mode"
+                        delay(1300)
+                        if (toastMessage == "Deck mode" || toastMessage == "Feed mode") {
+                            toastMessage = null
+                        }
+                    }
+                }
             )
 
             // Pull to refresh bar (.ptr / #ptrbar)
@@ -430,13 +451,60 @@ fun HomeScreen(
                     }
                 )
 
-                PullToRefreshBox(
-                    isRefreshing = isRefreshing,
-                    onRefresh = { triggerRefresh() },
+                AnimatedContent(
+                    targetState = isDeckMode,
+                    transitionSpec = {
+                        (fadeIn(SignalMotion.easeTween(280)) + scaleIn(initialScale = 0.96f, animationSpec = SignalMotion.easeTween(280))) togetherWith
+                            (fadeOut(SignalMotion.easeTween(180)) + scaleOut(targetScale = 0.98f, animationSpec = SignalMotion.easeTween(180)))
+                    },
+                    label = "homeFeedModeSwap",
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                ) {
+                ) { deckActive ->
+                    if (deckActive) {
+                        DeckFeedView(
+                            articles = filteredArticles,
+                            sourcesById = sourcesById,
+                            homeReselectTrigger = homeReselectTrigger,
+                            onArticleClick = onArticleClick,
+                            onToggleSave = { art ->
+                                coroutineScope.launch {
+                                    val willSave = !art.saved
+                                    repository.toggleSaved(art.id)
+                                    undoMarkReadIds = emptyList()
+                                    toastMessage = if (willSave) "Saved to Library" else "Removed from Saved"
+                                    delay(1400)
+                                    if (toastMessage == "Saved to Library" || toastMessage == "Removed from Saved") {
+                                        toastMessage = null
+                                    }
+                                }
+                            },
+                            onToggleRead = { art ->
+                                coroutineScope.launch {
+                                    val willMarkRead = !art.read
+                                    repository.toggleRead(art.id)
+                                    undoMarkReadIds = emptyList()
+                                    toastMessage = if (willMarkRead) "Marked as read" else "Marked as unread"
+                                    delay(1400)
+                                    if (toastMessage == "Marked as read" || toastMessage == "Marked as unread") {
+                                        toastMessage = null
+                                    }
+                                }
+                            },
+                            onRefresh = { triggerRefresh() },
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .alpha(feedAlpha.value)
+                        )
+                    } else {
+                        PullToRefreshBox(
+                            isRefreshing = isRefreshing,
+                            onRefresh = { triggerRefresh() },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
@@ -549,13 +617,15 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(32.dp))
                         }
                     }
+                        }
+                    }
                 }
             }
         }
 
         // Floating Jump to Earlier Read Pill (Approach C: discreet bottom-right pill)
         AnimatedVisibility(
-            visible = showJumpToRead,
+            visible = showJumpToRead && !isDeckMode,
             enter = fadeIn(tween(200)) + slideInVertically(
                 initialOffsetY = { it },
                 animationSpec = SignalMotion.easeTween(250)

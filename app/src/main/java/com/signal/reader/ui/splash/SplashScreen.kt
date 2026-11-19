@@ -1,6 +1,10 @@
 package com.signal.reader.ui.splash
 
+import android.app.Activity
 import android.os.Build
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -54,6 +58,26 @@ fun SplashScreen(
     val bgScale = remember { Animatable(1.08f) }
     val contentAlpha = remember { Animatable(0f) }
     val contentScale = remember { Animatable(0.92f) }
+
+    // Ensure full-bleed transparent system bars with light icons over the dark colonnade splash
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.context as? Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val prevLightStatus = controller?.isAppearanceLightStatusBars
+        val prevLightNav = controller?.isAppearanceLightNavigationBars
+        if (window != null && controller != null) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            controller.isAppearanceLightStatusBars = false
+            controller.isAppearanceLightNavigationBars = false
+        }
+        onDispose {
+            if (controller != null) {
+                if (prevLightStatus != null) controller.isAppearanceLightStatusBars = prevLightStatus
+                if (prevLightNav != null) controller.isAppearanceLightNavigationBars = prevLightNav
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         // Slow cinematic subtle drift on the blurred background

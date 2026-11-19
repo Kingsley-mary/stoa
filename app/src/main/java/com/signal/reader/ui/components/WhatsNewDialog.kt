@@ -37,8 +37,25 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.5.2",
+        version = "v1.6.0",
         isCurrent = true,
+        summary = "Full-Bleed Deck Feed Mode, True Edge-to-Edge Splash Screen, Design Tokens & Source Pill Layout Fix",
+        markdownNotes = """
+### New: Deck Feed Mode
+- **TikTok-Style Vertical Card Deck**: Switch to **Deck** mode in 1 tap from the Home header icon (or **Settings → Home → Layout**) to swipe vertically through full-bleed editorial magazine cards with stacked depth parallax and tactile haptics.
+- **Full-Bleed Editorial Covers**: Full-height photography with bottom-anchored bold typography, excerpt previews, read time, floating publication metadata, and architectural poster fallbacks for text-only stories.
+- **Swipe Right to Save · Swipe Left to Read**: Drag any card right with physical tilt to save/unsave it, or drag left to mark it read and automatically glide to the next story.
+- **Cubic-Bezier Bloom into Reader**: Tapping a card smoothly expands into the article using cubic-bezier scale + shared-element cover motion.
+
+### Polish & Fixes
+- **True Full-Bleed Splash Screen**: Removed opaque status/navigation bar overrides so the sunlit colonnade splash draws edge-to-edge behind transparent system bars with crisp light status icons.
+- **Source Page Action Pill Fix**: Replaced the single non-wrapping action row with a wrapping `FlowRow` so `Following`, `Mute`, `Pinned ★`, and `Alerts off` never squeeze vertically.
+- **Expanded Design Token System**: Added `SignalTheme.spacing`, `SignalTheme.shapes`, `SignalTheme.sizing`, and semantic color tokens (`highlightBg`, `scrim`, `success`, `warning`, `error`) for tighter UI consistency.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.5.2",
+        isCurrent = false,
         summary = "Inline Swipeable Galleries, Smart Mark-as-Read, Resume Reading, Folders, Muted Keywords, In-Article Highlights, TOC Jump & Bug Fixes",
         markdownNotes = """
 ### New Features
@@ -297,7 +314,7 @@ fun WhatsNewDialog(
         containerColor = colors.bg,
         titleContentColor = colors.ink,
         textContentColor = colors.mute,
-        shape = RoundedCornerShape(22.dp),
+        shape = SignalTheme.shapes.dialog,
         title = {
             Column {
                 Text(

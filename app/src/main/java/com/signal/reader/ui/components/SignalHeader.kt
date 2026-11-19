@@ -36,7 +36,9 @@ fun SignalHeader(
     onSettingsClick: () -> Unit,
     onMarkAllAsReadClick: () -> Unit,
     onLogoClick: () -> Unit = {},
-    onJumpToReadClick: (() -> Unit)? = null
+    onJumpToReadClick: (() -> Unit)? = null,
+    isDeckMode: Boolean = false,
+    onToggleDeckMode: (() -> Unit)? = null
 ) {
     val colors = SignalTheme.colors
     var menuExpanded by remember { mutableStateOf(false) }
@@ -110,6 +112,23 @@ fun SignalHeader(
                         }
                     )
                     HorizontalDivider(color = colors.line)
+                    if (onToggleDeckMode != null) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (isDeckMode) "Switch to Feed view" else "Switch to Deck view",
+                                    color = colors.ink,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onToggleDeckMode()
+                            }
+                        )
+                        HorizontalDivider(color = colors.line)
+                    }
                     if (onJumpToReadClick != null) {
                         DropdownMenuItem(
                             text = {
@@ -170,22 +189,74 @@ fun SignalHeader(
                 ) { onLogoClick() }
             )
 
-            // Search Button
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onSearchClick() },
-                contentAlignment = Alignment.Center
+            // Right actions: Feed/Deck layout toggle + Search Button
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Magnifying glass icon in ink
-                SearchGlassIcon(color = colors.ink)
+                if (onToggleDeckMode != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onToggleDeckMode() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        FeedLayoutToggleIcon(
+                            isDeckMode = isDeckMode,
+                            color = if (isDeckMode) colors.accent else colors.ink
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onSearchClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Magnifying glass icon in ink
+                    SearchGlassIcon(color = colors.ink)
+                }
             }
         }
 
         HorizontalDivider(color = colors.line, thickness = 1.dp)
+    }
+}
+
+@Composable
+private fun FeedLayoutToggleIcon(isDeckMode: Boolean, color: Color) {
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(16.dp)) {
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f * density)
+        if (isDeckMode) {
+            // Classic list / feed icon (tap to return to feed)
+            val w = size.width
+            drawLine(color, androidx.compose.ui.geometry.Offset(0f, 3f * density), androidx.compose.ui.geometry.Offset(w, 3f * density), strokeWidth = 1.6f * density)
+            drawLine(color, androidx.compose.ui.geometry.Offset(0f, 8f * density), androidx.compose.ui.geometry.Offset(w, 8f * density), strokeWidth = 1.6f * density)
+            drawLine(color, androidx.compose.ui.geometry.Offset(0f, 13f * density), androidx.compose.ui.geometry.Offset(w * 0.72f, 13f * density), strokeWidth = 1.6f * density)
+        } else {
+            // Stacked full-bleed card deck icon (tap to enter Deck mode)
+            val corner = androidx.compose.ui.geometry.CornerRadius(2.5f * density, 2.5f * density)
+            drawRoundRect(
+                color = color,
+                topLeft = androidx.compose.ui.geometry.Offset(1.5f * density, 1f * density),
+                size = androidx.compose.ui.geometry.Size(13f * density, 11f * density),
+                cornerRadius = corner,
+                style = stroke
+            )
+            drawLine(
+                color = color,
+                start = androidx.compose.ui.geometry.Offset(3.5f * density, 14.5f * density),
+                end = androidx.compose.ui.geometry.Offset(12.5f * density, 14.5f * density),
+                strokeWidth = 1.5f * density
+            )
+        }
     }
 }
 

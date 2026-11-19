@@ -338,11 +338,19 @@ fun SettingsScreen(
 
                         SettingsRow(label = "Layout") {
                             SlidingSegmentedControl(
-                                options = listOf("Cards", "Compact"),
-                                selectedIndex = if (settings.homeLayout == "compact") 1 else 0,
+                                options = listOf("Cards", "Compact", "Deck"),
+                                selectedIndex = when (settings.homeLayout) {
+                                    "compact" -> 1
+                                    "deck" -> 2
+                                    else -> 0
+                                },
                                 onSelect = { idx ->
                                     haptics.tick()
-                                    val newLayout = if (idx == 1) "compact" else "cards"
+                                    val newLayout = when (idx) {
+                                        1 -> "compact"
+                                        2 -> "deck"
+                                        else -> "cards"
+                                    }
                                     settingsManager.updateHomeLayout(newLayout)
                                 }
                             )
@@ -684,7 +692,7 @@ fun SettingsScreen(
 
                         SettingsActionRow(
                             label = "What’s new in Stoa",
-                            sublabel = "Release notes for v1.5.2, v1.5.0 & v1.4.20",
+                            sublabel = "Release notes for v1.6.0, v1.5.2 & v1.5.0",
                             onClick = { showWhatsNewDialog = true }
                         )
 

@@ -21,6 +21,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -80,7 +82,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun SourcePageScreen(
     sourceId: Long,
@@ -346,11 +348,13 @@ fun SourcePageScreen(
                         }
                     }
 
-                    // Action buttons (.acts: Following/Follow, Mute/Muted, Alerts)
-                    Row(
-                        modifier = Modifier.padding(top = 22.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // Action buttons (.acts: Following/Follow, Mute/Muted, Pin/Pinned, Alerts)
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = SignalTheme.spacing.xl),
+                        horizontalArrangement = Arrangement.spacedBy(SignalTheme.spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(SignalTheme.spacing.sm)
                     ) {
                         // Follow / Following pill
                         val isFollowed = currentSource.followed
@@ -377,7 +381,9 @@ fun SourcePageScreen(
                                 text = if (isFollowed) "Following" else "Follow",
                                 color = if (!isFollowed) colors.bg else colors.ink,
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
 
@@ -404,7 +410,9 @@ fun SourcePageScreen(
                                 text = if (isMuted) "Muted" else "Mute",
                                 color = if (isMuted) colors.bg else colors.ink,
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
 
@@ -430,7 +438,9 @@ fun SourcePageScreen(
                                 text = if (isPinned) "Pinned ★" else "Pin",
                                 color = if (isPinned) colors.bg else colors.ink,
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
 
@@ -497,7 +507,9 @@ fun SourcePageScreen(
                                         text = if (isAlertsActive) "Alerts" else "Alerts off",
                                         color = if (isAlertsActive) colors.bg else colors.ink,
                                         fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }

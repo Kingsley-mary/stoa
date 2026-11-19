@@ -2171,7 +2171,7 @@ private fun RenderContentBlock(
     onVideoClick: (url: String) -> Unit
 ) {
     val colors = SignalTheme.colors
-    val highlightBg = colors.accent.copy(alpha = 0.22f)
+    val highlightBg = colors.highlightBg
 
     when (block) {
         is ContentBlock.Paragraph -> {
@@ -2409,7 +2409,7 @@ private fun InlineImageGallery(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                .clip(SignalTheme.shapes.card)
                 .background(colors.card)
         ) {
             HorizontalPager(
