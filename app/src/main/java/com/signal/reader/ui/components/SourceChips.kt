@@ -39,18 +39,25 @@ import kotlin.math.roundToInt
 @Composable
 fun SourceChips(
     sources: List<SourceEntity>,
-    selectedSourceId: Long?, // null means "All"
+    selectedSourceId: Long?, // null means "All" (unless selectedFolder is non-null)
     onSelectSource: (Long?) -> Unit,
+    folders: List<String> = emptyList(),
+    selectedFolder: String? = null,
+    onSelectFolder: ((String?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = SignalTheme.colors
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
 
-    // Store measured (x, width) for each chip key (-1 for "All", source.id for sources)
-    val chipBounds = remember { mutableStateMapOf<Long, Pair<Float, Float>>() }
+    // Store measured (x, width) for each chip key ("all", "folder:<name>", "source:<id>")
+    val chipBounds = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
 
-    val activeKey = selectedSourceId ?: -1L
+    val activeKey = when {
+        !selectedFolder.isNullOrBlank() -> "folder:$selectedFolder"
+        selectedSourceId != null -> "source:$selectedSourceId"
+        else -> "all"
+    }
     val activeBounds = chipBounds[activeKey] ?: Pair(0f, 0f)
 
     val animatedLeft by animateFloatAsState(
@@ -65,7 +72,7 @@ fun SourceChips(
     )
 
     // Auto-scroll selected chip into view
-    LaunchedEffect(selectedSourceId, activeBounds) {
+    LaunchedEffect(activeKey, activeBounds) {
         if (activeBounds.second > 0f) {
             val targetScroll = (activeBounds.first - 100f).coerceAtLeast(0f)
             scrollState.animateScrollTo(targetScroll.roundToInt())
@@ -97,21 +104,41 @@ fun SourceChips(
             // "All" chip
             ChipItem(
                 label = "All",
-                isSelected = selectedSourceId == null,
-                onClick = { onSelectSource(null) },
+                isSelected = selectedSourceId == null && selectedFolder.isNullOrBlank(),
+                onClick = {
+                    onSelectFolder?.invoke(null)
+                    onSelectSource(null)
+                },
                 onPositioned = { x, w ->
-                    chipBounds[-1L] = Pair(x, w)
+                    chipBounds["all"] = Pair(x, w)
                 }
             )
+
+            // Folder chips (when user has grouped sources into folders)
+            if (onSelectFolder != null) {
+                folders.forEach { folder ->
+                    ChipItem(
+                        label = "▪ $folder",
+                        isSelected = selectedFolder == folder,
+                        onClick = { onSelectFolder(folder) },
+                        onPositioned = { x, w ->
+                            chipBounds["folder:$folder"] = Pair(x, w)
+                        }
+                    )
+                }
+            }
 
             // Sources chips
             sources.forEach { source ->
                 ChipItem(
                     label = source.name,
-                    isSelected = selectedSourceId == source.id,
-                    onClick = { onSelectSource(source.id) },
+                    isSelected = selectedFolder.isNullOrBlank() && selectedSourceId == source.id,
+                    onClick = {
+                        onSelectFolder?.invoke(null)
+                        onSelectSource(source.id)
+                    },
                     onPositioned = { x, w ->
-                        chipBounds[source.id] = Pair(x, w)
+                        chipBounds["source:${source.id}"] = Pair(x, w)
                     }
                 )
             }

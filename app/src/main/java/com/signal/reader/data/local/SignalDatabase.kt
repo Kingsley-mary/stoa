@@ -19,7 +19,7 @@ import com.signal.reader.data.local.entity.SourceEntity
         ArticleEntity::class,
         HighlightEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class SignalDatabase : RoomDatabase() {
@@ -59,6 +59,14 @@ abstract class SignalDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE articles ADD COLUMN lastScrollIndex INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE articles ADD COLUMN lastScrollOffset INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE sources ADD COLUMN folder TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getInstance(context: Context): SignalDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -66,7 +74,7 @@ abstract class SignalDatabase : RoomDatabase() {
                     SignalDatabase::class.java,
                     "signal_reader.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
                 INSTANCE = instance

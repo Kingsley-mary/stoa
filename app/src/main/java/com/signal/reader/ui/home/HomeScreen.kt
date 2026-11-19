@@ -151,9 +151,18 @@ fun HomeScreen(
     val allArticles by repository.getHomeStreamFlow().collectAsState(initial = emptyList())
 
     var selectedSourceId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedFolder by rememberSaveable { mutableStateOf<String?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     var toastMessage by remember { mutableStateOf<String?>(null) }
     var undoMarkReadIds by remember { mutableStateOf<List<Long>>(emptyList()) }
+
+    val folders = remember(sources) {
+        sources.map { it.folder.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+    }
+    val folderSourceIds = remember(sources, selectedFolder) {
+        if (selectedFolder.isNullOrBlank()) emptySet()
+        else sources.filter { it.folder.trim().equals(selectedFolder, ignoreCase = true) }.map { it.id }.toSet()
+    }
 
     // First load word animation flag
     var hasAnimatedFirstLoad by remember { mutableStateOf(false) }
@@ -163,17 +172,33 @@ fun HomeScreen(
     val feedOffsetY = remember { Animatable(0f) }
     var shouldSlideHero by remember { mutableStateOf(false) }
 
-    // Filter stream by active chip, unreadOnlyFilter setting, and sort Unread first
-    val filteredArticles = remember(allArticles, selectedSourceId, homeSettings.unreadOnlyFilter) {
-        val bySource = if (selectedSourceId == null) {
-            allArticles
-        } else {
-            allArticles.filter { it.sourceId == selectedSourceId }
+    // Filter stream by active folder/source chip, unreadOnlyFilter, muted keywords, and sort Unread first
+    val filteredArticles = remember(
+        allArticles,
+        selectedSourceId,
+        selectedFolder,
+        folderSourceIds,
+        homeSettings.unreadOnlyFilter,
+        homeSettings.mutedKeywords
+    ) {
+        val bySource = when {
+            !selectedFolder.isNullOrBlank() -> allArticles.filter { it.sourceId in folderSourceIds }
+            selectedSourceId != null -> allArticles.filter { it.sourceId == selectedSourceId }
+            else -> allArticles
         }
-        val base = if (homeSettings.unreadOnlyFilter) {
+        val byUnread = if (homeSettings.unreadOnlyFilter) {
             bySource.filter { !it.read }
         } else {
             bySource
+        }
+        val keywords = homeSettings.mutedKeywords
+        val base = if (keywords.isEmpty()) {
+            byUnread
+        } else {
+            byUnread.filter { art ->
+                val haystack = "${art.title} ${art.excerpt}"
+                keywords.none { kw -> haystack.contains(kw, ignoreCase = true) }
+            }
         }
         base.sortedWith(compareBy<ArticleEntity> { it.read }.thenByDescending { it.publishedTime })
     }
@@ -382,11 +407,27 @@ fun HomeScreen(
             if (sources.isEmpty()) {
                 EmptyHomeState(onAddSourcesClick = onAddSourcesClick)
             } else {
-                // Source filtering chips with sliding indicator (.chips)
+                // Source & Folder filtering chips with sliding indicator (.chips)
                 SourceChips(
                     sources = sources,
                     selectedSourceId = selectedSourceId,
-                    onSelectSource = { onChipSelected(it) }
+                    onSelectSource = {
+                        selectedFolder = null
+                        onChipSelected(it)
+                    },
+                    folders = folders,
+                    selectedFolder = selectedFolder,
+                    onSelectFolder = { folder ->
+                        if (folder == selectedFolder) return@SourceChips
+                        coroutineScope.launch {
+                            haptics.tick()
+                            feedAlpha.animateTo(0f, tween(130))
+                            selectedFolder = folder
+                            selectedSourceId = null
+                            listState.scrollToItem(0)
+                            feedAlpha.animateTo(1f, tween(180))
+                        }
+                    }
                 )
 
                 PullToRefreshBox(

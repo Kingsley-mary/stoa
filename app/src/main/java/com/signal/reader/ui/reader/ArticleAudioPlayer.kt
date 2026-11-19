@@ -116,6 +116,7 @@ class ArticleAudioPlayer(context: Context) {
                     }
 
                     override fun onDone(utteranceId: String?) {
+                        if (utteranceId != null && utteranceId != "chunk_$currentChunkIndex") return
                         currentChunkIndex++
                         if (currentChunkIndex < articleTextQueue.size && _playbackState.value.status == AudioPlaybackStatus.PLAYING) {
                             speakCurrentChunk()
@@ -257,6 +258,7 @@ class ArticleAudioPlayer(context: Context) {
     fun skipNext() {
         if (articleTextQueue.isEmpty()) return
         if (currentChunkIndex < articleTextQueue.lastIndex) {
+            requestAudioFocus()
             currentChunkIndex++
             speakCurrentChunk()
         } else {
@@ -266,6 +268,7 @@ class ArticleAudioPlayer(context: Context) {
 
     fun skipPrevious() {
         if (articleTextQueue.isEmpty()) return
+        requestAudioFocus()
         currentChunkIndex = (currentChunkIndex - 1).coerceAtLeast(0)
         speakCurrentChunk()
     }

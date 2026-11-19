@@ -81,13 +81,13 @@ fun SplashScreen(
             .background(Color(0xFF10100F)),
         contentAlignment = Alignment.Center
     ) {
-        // Blurred Architectural Editorial Background Image (pre-blurred 7KB WebP)
+        // Sunlit Architectural Colonnade Background Image
         val imageModifier = Modifier
             .fillMaxSize()
             .scale(bgScale.value)
             .then(
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    Modifier.blur(16.dp)
+                    Modifier.blur(5.dp)
                 } else Modifier
             )
 
@@ -98,16 +98,16 @@ fun SplashScreen(
             contentScale = ContentScale.Crop
         )
 
-        // Frosted Scrim Overlay for deep luxury contrast
+        // Subtle warm charcoal scrim so the golden colonnade shines while STOA stays razor-sharp
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xB310100F),
-                            Color(0x8010100F),
-                            Color(0xD910100F)
+                            Color(0x9910100F),
+                            Color(0x5910100F),
+                            Color(0xC010100F)
                         )
                     )
                 )

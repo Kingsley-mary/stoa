@@ -55,9 +55,12 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -182,12 +185,15 @@ fun ReaderScreen(
         homeArticles.filter { it.id != articleId && !it.read }.take(3)
     }
 
-    // Mark as read immediately on open
-    LaunchedEffect(articleId) {
-        repository.markArticleRead(articleId)
+    val articleHighlights by repository.getHighlightsForArticleFlow(articleId).collectAsState(initial = emptyList())
+    val highlightQuotes = remember(articleHighlights) {
+        articleHighlights.map { it.quoteText }.filter { it.isNotBlank() }
     }
 
     val listState = rememberLazyListState()
+    var hasMarkedRead by remember(articleId) { mutableStateOf(false) }
+    var hasRestoredPosition by remember(articleId) { mutableStateOf(false) }
+    var showTocDialog by remember { mutableStateOf(false) }
 
     // Smooth reading progress calculation across all items and scroll offset
     val readingProgress by remember {
@@ -316,6 +322,59 @@ fun ReaderScreen(
         parseContentBlocks(raw, heroImageUrl = effectiveHeroImage)
     }
 
+    // Restore saved reading position once content blocks are ready
+    LaunchedEffect(articleId, blocks.size) {
+        if (!hasRestoredPosition && blocks.isNotEmpty()) {
+            hasRestoredPosition = true
+            val savedIdx = currentArticle.lastScrollIndex
+            val savedOff = currentArticle.lastScrollOffset
+            if (savedIdx > 0 || savedOff > 0) {
+                runCatching {
+                    listState.scrollToItem(savedIdx.coerceAtMost(blocks.size + 4), savedOff.coerceAtLeast(0))
+                }
+            }
+        }
+    }
+
+    // Persist reading position when leaving the article (reset to 0 if finished)
+    DisposableEffect(articleId) {
+        onDispose {
+            val finished = readingProgress >= 0.94f
+            val idx = if (finished) 0 else listState.firstVisibleItemIndex
+            val off = if (finished) 0 else listState.firstVisibleItemScrollOffset
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                runCatching { repository.updateReadingPosition(articleId, idx, off) }
+            }
+        }
+    }
+
+    // Smart Mark-as-Read: only mark read once user scrolls >= 35% into the article...
+    LaunchedEffect(articleId, readingProgress) {
+        if (!hasMarkedRead && !currentArticle.read && readingProgress >= 0.35f) {
+            hasMarkedRead = true
+            repository.markArticleRead(articleId)
+        }
+    }
+
+    // ...or after genuinely spending time reading (6s for short single-screen articles, 12s otherwise)
+    LaunchedEffect(articleId) {
+        if (currentArticle.read) {
+            hasMarkedRead = true
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(6_000L)
+        if (!hasMarkedRead && listState.layoutInfo.totalItemsCount > 0 && !listState.canScrollForward) {
+            hasMarkedRead = true
+            repository.markArticleRead(articleId)
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(6_000L)
+        if (!hasMarkedRead) {
+            hasMarkedRead = true
+            repository.markArticleRead(articleId)
+        }
+    }
+
     val paragraphTexts = remember(blocks) {
         blocks.filterIsInstance<ContentBlock.Paragraph>().map { it.text }
     }
@@ -324,14 +383,33 @@ fun ReaderScreen(
         extractedHtml == null && (currentArticle.isExcerptOnly || (currentArticle.fullContent == null && (currentArticle.excerpt.length < 500 || currentArticle.excerpt.split(" ").size < 90)))
     }
 
+    val tocHeadings = remember(blocks, isExcerpt) {
+        val visible = if (isExcerpt) blocks.take(3) else blocks
+        visible.mapIndexedNotNull { idx, block ->
+            if (block is ContentBlock.Heading) Pair(idx + 5, block) else null
+        }
+    }
+
     val allArticleImages = remember(currentArticle, blocks, effectiveHeroImage) {
         val list = mutableListOf<ArticleImage>()
         if (!effectiveHeroImage.isNullOrBlank()) {
             list.add(ArticleImage(url = effectiveHeroImage, caption = currentArticle.title, credit = currentArticle.sourceName))
         }
         for (b in blocks) {
-            if (b is ContentBlock.Image && b.url.isNotBlank() && list.none { it.url == b.url }) {
-                list.add(ArticleImage(url = b.url, caption = b.caption, credit = currentArticle.sourceName))
+            when (b) {
+                is ContentBlock.Image -> {
+                    if (b.url.isNotBlank() && list.none { it.url == b.url }) {
+                        list.add(ArticleImage(url = b.url, caption = b.caption, credit = currentArticle.sourceName))
+                    }
+                }
+                is ContentBlock.ImageGallery -> {
+                    for (img in b.images) {
+                        if (img.url.isNotBlank() && list.none { it.url == img.url }) {
+                            list.add(ArticleImage(url = img.url, caption = img.caption, credit = currentArticle.sourceName))
+                        }
+                    }
+                }
+                else -> {}
             }
         }
         list
@@ -417,13 +495,35 @@ fun ReaderScreen(
                             Spacer(modifier = Modifier.weight(1f))
                         }
 
-                        // Right-hand actions: Listen (Audio TTS) & Quote Card Share
+                        // Right-hand actions: TOC (for long articles), Listen (Audio TTS) & Quote Card Share
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            // Table of Contents pill (only shown when article has >= 3 headings)
+                            if (tocHeadings.size >= 3) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .signalPressScale(0.92f) {
+                                            haptics.tick()
+                                            showTocDialog = true
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "≡",
+                                        color = colors.ink,
+                                        fontSize = 19.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
                             // Listen / Audio button
-                            val isAudioActive = audioState.status != AudioPlaybackStatus.IDLE
+                            val isAudioActive = audioState.status != AudioPlaybackStatus.IDLE &&
+                                audioState.articleId == currentArticle.id
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
@@ -587,6 +687,7 @@ fun ReaderScreen(
                                 fontSize = currentFontSize,
                                 isSerif = isSerif,
                                 articleUrl = currentArticle.url,
+                                highlightQuotes = highlightQuotes,
                                 onImageClick = { url, _ ->
                                     val clickedIdx = allArticleImages.indexOfFirst { it.url == url }.takeIf { it >= 0 } ?: 0
                                     activeGalleryIndex = clickedIdx
@@ -978,10 +1079,10 @@ fun ReaderScreen(
             }
         }
 
-        // Floating Braun Audio Player Dock (when playing/paused)
+        // Floating Braun Audio Player Dock (only when playing/paused for THIS article)
         val isDarkActive = colors.bg == com.signal.reader.ui.theme.DarkBg
         AnimatedVisibility(
-            visible = audioState.status != AudioPlaybackStatus.IDLE,
+            visible = audioState.status != AudioPlaybackStatus.IDLE && audioState.articleId == currentArticle.id,
             enter = slideInVertically { it } + fadeIn(),
             exit = slideOutVertically { it } + fadeOut(),
             modifier = Modifier
@@ -1140,6 +1241,83 @@ fun ReaderScreen(
             )
         }
 
+        // Table of Contents Jump Dialog
+        if (showTocDialog && tocHeadings.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = { showTocDialog = false },
+                containerColor = colors.bg,
+                titleContentColor = colors.ink,
+                textContentColor = colors.mute,
+                shape = RoundedCornerShape(22.dp),
+                title = {
+                    Column {
+                        Text(
+                            text = "OUTLINE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.2.sp,
+                            color = colors.mute
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Jump to Section",
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.ink
+                        )
+                    }
+                },
+                text = {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height((tocHeadings.size * 48).coerceAtMost(340).dp)
+                    ) {
+                        itemsIndexed(tocHeadings) { _, (listIndex, heading) ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        haptics.tick()
+                                        showTocDialog = false
+                                        coroutineScope.launch {
+                                            listState.animateScrollToItem(listIndex)
+                                        }
+                                    }
+                                    .padding(
+                                        start = if (heading.level >= 3) 14.dp else 0.dp,
+                                        top = 10.dp,
+                                        bottom = 10.dp
+                                    )
+                            ) {
+                                Text(
+                                    text = heading.text,
+                                    color = colors.ink,
+                                    fontSize = if (heading.level <= 2) 15.sp else 13.sp,
+                                    fontWeight = if (heading.level <= 2) FontWeight.SemiBold else FontWeight.Normal,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            HorizontalDivider(color = colors.line, thickness = 1.dp)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Text(
+                        text = "Close",
+                        color = colors.ink,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showTocDialog = false }
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            )
+        }
+
         // Share Story Sheet (with link sharing & quote card generator)
         if (showShareSheet) {
             ShareStorySheet(
@@ -1258,6 +1436,7 @@ private sealed class ContentBlock {
     data class Paragraph(val text: String, val html: String = text) : ContentBlock()
     data class Heading(val text: String, val level: Int) : ContentBlock()
     data class Image(val url: String, val caption: String? = null) : ContentBlock()
+    data class ImageGallery(val images: List<Image>) : ContentBlock()
     data class Video(
         val videoUrl: String,
         val posterUrl: String? = null,
@@ -1498,11 +1677,47 @@ private fun extractSocialEmbedFromLink(url: String, fallbackText: String): Conte
     }
 }
 
+private fun normalizeImageKey(url: String): String {
+    return url.trim()
+        .substringBefore("?")
+        .substringBefore("#")
+        .lowercase(Locale.ROOT)
+}
+
+private fun collapseConsecutiveImages(
+    blocks: List<ContentBlock>,
+    minGroupSize: Int = 3
+): List<ContentBlock> {
+    if (blocks.size < minGroupSize) return blocks
+    val result = mutableListOf<ContentBlock>()
+    val pendingImages = mutableListOf<ContentBlock.Image>()
+
+    fun flushImages() {
+        if (pendingImages.size >= minGroupSize) {
+            result.add(ContentBlock.ImageGallery(pendingImages.toList()))
+        } else {
+            result.addAll(pendingImages)
+        }
+        pendingImages.clear()
+    }
+
+    for (block in blocks) {
+        if (block is ContentBlock.Image) {
+            pendingImages.add(block)
+        } else {
+            flushImages()
+            result.add(block)
+        }
+    }
+    flushImages()
+    return result
+}
+
 private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List<ContentBlock> {
     val doc = Jsoup.parse(html)
     val blocks = mutableListOf<ContentBlock>()
     val seenImages = mutableSetOf<String>()
-    heroImageUrl?.let { seenImages.add(it.trim()) }
+    heroImageUrl?.takeIf { it.isNotBlank() }?.let { seenImages.add(normalizeImageKey(it)) }
 
     val elements = doc.body().select("p, h1, h2, h3, h4, figure, img, source, picture, blockquote, ul, ol, pre, table, iframe, video, .in-content-video-embed")
     val processedElements = mutableSetOf<org.jsoup.nodes.Element>()
@@ -1666,7 +1881,7 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                         ?: ImageResolver.extractBestImageUrlFromElement(img)
                         ?: img.attr("src").ifBlank { img.attr("data-src") }.trim()
                     val caption = el.selectFirst("figcaption, .image-caption, .caption, small")?.text()?.trim()
-                    if (!src.isNullOrBlank() && !src.startsWith("data:") && seenImages.add(src)) {
+                    if (!src.isNullOrBlank() && !src.startsWith("data:") && seenImages.add(normalizeImageKey(src))) {
                         blocks.add(ContentBlock.Image(src, caption?.ifBlank { img.attr("alt").trim() }?.ifBlank { null }))
                     }
                 }
@@ -1782,14 +1997,14 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                         }
                         if (img != null && text.length < 5) {
                             val alt = img.attr("alt").trim().ifBlank { img.attr("title").trim() }
-                            if (!realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(realSrc)) {
+                            if (!realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(normalizeImageKey(realSrc))) {
                                 blocks.add(ContentBlock.Image(realSrc, alt.ifBlank { null }))
                             }
                         } else {
                             if (text.isNotBlank()) {
                                 blocks.add(ContentBlock.Paragraph(text = text, html = el.html()))
                             }
-                            if (img != null && !realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(realSrc)) {
+                            if (img != null && !realSrc.isNullOrBlank() && !realSrc.startsWith("data:") && seenImages.add(normalizeImageKey(realSrc))) {
                                 val alt = img.attr("alt").trim()
                                 blocks.add(ContentBlock.Image(realSrc, alt.ifBlank { null }))
                             }
@@ -1804,7 +2019,7 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
                         ?: ImageResolver.extractBestImageUrlFromElement(el)
                         ?: el.attr("src").ifBlank { el.attr("data-src") }.trim()
                     val alt = el.attr("alt").trim().ifBlank { el.selectFirst("img")?.attr("alt")?.trim().orEmpty() }
-                    if (!src.isNullOrBlank() && !src.startsWith("data:") && seenImages.add(src)) {
+                    if (!src.isNullOrBlank() && !src.startsWith("data:") && seenImages.add(normalizeImageKey(src))) {
                         val lastBlock = blocks.lastOrNull()
                         if (lastBlock !is ContentBlock.Image || lastBlock.url != src) {
                             blocks.add(ContentBlock.Image(src, alt.ifBlank { null }))
@@ -1862,7 +2077,7 @@ private fun parseContentBlocks(html: String, heroImageUrl: String? = null): List
         }
     }
 
-    return blocks
+    return collapseConsecutiveImages(blocks, minGroupSize = 3)
 }
 
 private fun appendHtmlNode(
@@ -1921,21 +2136,46 @@ private fun appendHtmlNode(
     }
 }
 
+private fun AnnotatedString.Builder.applyHighlightSpans(
+    highlightQuotes: List<String>,
+    highlightColor: Color
+) {
+    if (highlightQuotes.isEmpty()) return
+    val fullText = toAnnotatedString().text
+    if (fullText.isBlank()) return
+    for (quote in highlightQuotes) {
+        val needle = quote.trim()
+        if (needle.length < 3) continue
+        var startIndex = fullText.indexOf(needle, ignoreCase = true)
+        while (startIndex >= 0) {
+            val endIndex = (startIndex + needle.length).coerceAtMost(fullText.length)
+            addStyle(
+                style = SpanStyle(background = highlightColor),
+                start = startIndex,
+                end = endIndex
+            )
+            startIndex = fullText.indexOf(needle, startIndex = endIndex, ignoreCase = true)
+        }
+    }
+}
+
 @Composable
 private fun RenderContentBlock(
     block: ContentBlock,
     fontSize: androidx.compose.ui.unit.TextUnit,
     isSerif: Boolean = false,
     articleUrl: String? = null,
+    highlightQuotes: List<String> = emptyList(),
     onImageClick: (url: String, caption: String?) -> Unit,
     onLinkClick: (url: String) -> Unit,
     onVideoClick: (url: String) -> Unit
 ) {
     val colors = SignalTheme.colors
+    val highlightBg = colors.accent.copy(alpha = 0.22f)
 
     when (block) {
         is ContentBlock.Paragraph -> {
-            val annotated = remember(block.html, colors.ink) {
+            val annotated = remember(block.html, colors.ink, highlightQuotes) {
                 try {
                     val doc = Jsoup.parseBodyFragment(block.html)
                     val pEl = doc.body().selectFirst("p") ?: doc.body()
@@ -1943,9 +2183,13 @@ private fun RenderContentBlock(
                         pEl.childNodes().forEach { node ->
                             appendHtmlNode(this, node, colors.ink, onLinkClick)
                         }
+                        applyHighlightSpans(highlightQuotes, highlightBg)
                     }
                 } catch (_: Exception) {
-                    AnnotatedString(block.text)
+                    buildAnnotatedString {
+                        append(block.text)
+                        applyHighlightSpans(highlightQuotes, highlightBg)
+                    }
                 }
             }
 
@@ -1954,6 +2198,12 @@ private fun RenderContentBlock(
                 style = SignalTheme.typography.readerBody(fontSize, isSerif),
                 color = colors.ink,
                 modifier = Modifier.padding(bottom = 18.dp)
+            )
+        }
+        is ContentBlock.ImageGallery -> {
+            InlineImageGallery(
+                images = block.images,
+                onImageClick = onImageClick
             )
         }
         is ContentBlock.Image -> {
@@ -2046,7 +2296,7 @@ private fun RenderContentBlock(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 block.htmlItems.forEach { htmlItem ->
-                    val annotated = remember(htmlItem, colors.ink) {
+                    val annotated = remember(htmlItem, colors.ink, highlightQuotes) {
                         try {
                             val doc = Jsoup.parseBodyFragment(htmlItem)
                             val liEl = doc.body().selectFirst("li") ?: doc.body()
@@ -2054,9 +2304,13 @@ private fun RenderContentBlock(
                                 liEl.childNodes().forEach { node ->
                                     appendHtmlNode(this, node, colors.ink, onLinkClick)
                                 }
+                                applyHighlightSpans(highlightQuotes, highlightBg)
                             }
                         } catch (_: Exception) {
-                            AnnotatedString(htmlItem)
+                            buildAnnotatedString {
+                                append(htmlItem)
+                                applyHighlightSpans(highlightQuotes, highlightBg)
+                            }
                         }
                     }
 
@@ -2124,6 +2378,148 @@ private fun RenderContentBlock(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun InlineImageGallery(
+    images: List<ContentBlock.Image>,
+    onImageClick: (url: String, caption: String?) -> Unit
+) {
+    if (images.isEmpty()) return
+    val colors = SignalTheme.colors
+    val context = LocalContext.current
+    val haptics = rememberSignalHaptics()
+    val pagerState = rememberPagerState(pageCount = { images.size })
+    var lastHapticPage by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage != lastHapticPage) {
+            lastHapticPage = pagerState.currentPage
+            haptics.tick()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(colors.card)
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                pageSpacing = 8.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(4f / 3f)
+            ) { page ->
+                val img = images[page]
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(img.url)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = img.caption ?: "Gallery photo ${page + 1}",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable { onImageClick(img.url, img.caption) }
+                )
+            }
+
+            // Top-right counter pill (e.g., 1 / 8)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = "${pagerState.currentPage + 1} / ${images.size}",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            // Subtle swipe hint label at bottom-left on page 0
+            if (pagerState.currentPage == 0 && images.size >= 3) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(12.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Swipe gallery →",
+                        color = Color.White.copy(alpha = 0.92f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Adaptive page indicator: dots for <= 8 photos, sleek progress bar for 9+
+        if (images.size <= 8) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                images.indices.forEach { idx ->
+                    val active = idx == pagerState.currentPage
+                    Box(
+                        modifier = Modifier
+                            .size(width = if (active) 18.dp else 6.dp, height = 6.dp)
+                            .clip(CircleShape)
+                            .background(if (active) colors.ink else colors.line)
+                    )
+                }
+            }
+        } else {
+            val fraction = ((pagerState.currentPage + 1).toFloat() / images.size.toFloat()).coerceIn(0f, 1f)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .height(3.dp)
+                    .clip(CircleShape)
+                    .background(colors.line)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction)
+                        .height(3.dp)
+                        .clip(CircleShape)
+                        .background(colors.ink)
+                )
+            }
+        }
+
+        // Live active slide caption
+        val activeCaption = images.getOrNull(pagerState.currentPage)?.caption
+        if (!activeCaption.isNullOrBlank()) {
+            Text(
+                text = activeCaption,
+                color = colors.mute,
+                fontSize = 13.sp,
+                fontStyle = FontStyle.Italic,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp)
+            )
         }
     }
 }

@@ -21,7 +21,8 @@ data class SignalSettings(
     val newSitesBehavior: String = "follow_and_open", // "follow_and_open", "ask_first", "just_open"
     val openByDefaultCardDismissed: Boolean = false,
     val userInterests: Set<String> = emptySet(),
-    val offlinePreExtract: Boolean = false
+    val offlinePreExtract: Boolean = false,
+    val mutedKeywords: List<String> = emptyList()
 )
 
 class SettingsManager(context: Context) {
@@ -34,6 +35,8 @@ class SettingsManager(context: Context) {
     private fun loadSettings(): SignalSettings {
         val recentString = prefs.getString(KEY_RECENT_SEARCHES, "") ?: ""
         val recents = if (recentString.isBlank()) emptyList() else recentString.split("|||")
+        val mutedString = prefs.getString(KEY_MUTED_KEYWORDS, "") ?: ""
+        val mutedList = if (mutedString.isBlank()) emptyList() else mutedString.split("|||").filter { it.isNotBlank() }
 
         return SignalSettings(
             theme = prefs.getString(KEY_THEME, "auto") ?: "auto",
@@ -50,8 +53,24 @@ class SettingsManager(context: Context) {
             newSitesBehavior = prefs.getString(KEY_NEW_SITES_BEHAVIOR, "follow_and_open") ?: "follow_and_open",
             openByDefaultCardDismissed = prefs.getBoolean(KEY_OPEN_BY_DEFAULT_DISMISSED, false),
             userInterests = prefs.getStringSet(KEY_USER_INTERESTS, emptySet()) ?: emptySet(),
-            offlinePreExtract = prefs.getBoolean(KEY_OFFLINE_PRE_EXTRACT, false)
+            offlinePreExtract = prefs.getBoolean(KEY_OFFLINE_PRE_EXTRACT, false),
+            mutedKeywords = mutedList
         )
+    }
+
+    fun addMutedKeyword(keyword: String) {
+        val trimmed = keyword.trim()
+        if (trimmed.isBlank()) return
+        val current = _settingsFlow.value.mutedKeywords.filterNot { it.equals(trimmed, ignoreCase = true) }
+        val updated = current + trimmed
+        prefs.edit().putString(KEY_MUTED_KEYWORDS, updated.joinToString("|||")).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(mutedKeywords = updated)
+    }
+
+    fun removeMutedKeyword(keyword: String) {
+        val updated = _settingsFlow.value.mutedKeywords.filterNot { it.equals(keyword, ignoreCase = true) }
+        prefs.edit().putString(KEY_MUTED_KEYWORDS, updated.joinToString("|||")).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(mutedKeywords = updated)
     }
 
     fun updateOfflinePreExtract(enabled: Boolean) {
@@ -162,5 +181,6 @@ class SettingsManager(context: Context) {
         private const val KEY_OPEN_BY_DEFAULT_DISMISSED = "open_by_default_dismissed"
         private const val KEY_USER_INTERESTS = "user_interests"
         private const val KEY_OFFLINE_PRE_EXTRACT = "offline_pre_extract"
+        private const val KEY_MUTED_KEYWORDS = "muted_keywords"
     }
 }

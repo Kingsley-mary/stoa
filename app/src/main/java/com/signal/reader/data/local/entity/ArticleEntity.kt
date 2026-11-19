@@ -29,7 +29,9 @@ data class ArticleEntity(
     val read: Boolean = false,
     val saved: Boolean = false,
     val savedTime: Long? = null,
-    val url: String = ""
+    val url: String = "",
+    val lastScrollIndex: Int = 0,
+    val lastScrollOffset: Int = 0
 ) {
     val link: String get() = url
     val pubDate: Long get() = publishedTime

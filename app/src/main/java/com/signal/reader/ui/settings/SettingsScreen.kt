@@ -118,6 +118,8 @@ fun SettingsScreen(
     var showOpenLinksDialog by remember { mutableStateOf(false) }
     var showPublicationAlertsDialog by remember { mutableStateOf(false) }
     var showWhatsNewDialog by remember { mutableStateOf(false) }
+    var showMutedKeywordsDialog by remember { mutableStateOf(false) }
+    var newKeywordInput by remember { mutableStateOf("") }
 
     val notifManager = remember { (context.applicationContext as com.signal.reader.SignalApplication).notificationManager }
     val followedSources by repository.getFollowedSourcesFlow().collectAsState(initial = emptyList())
@@ -358,6 +360,16 @@ fun SettingsScreen(
                                 }
                             )
                         }
+
+                        SettingsActionRow(
+                            label = "Muted keywords",
+                            sublabel = if (settings.mutedKeywords.isEmpty()) {
+                                "Hide stories containing specific words"
+                            } else {
+                                "${settings.mutedKeywords.size} muted: ${settings.mutedKeywords.take(3).joinToString(", ")}"
+                            },
+                            onClick = { showMutedKeywordsDialog = true }
+                        )
                     }
                 }
             }
@@ -672,7 +684,7 @@ fun SettingsScreen(
 
                         SettingsActionRow(
                             label = "What’s new in Stoa",
-                            sublabel = "Release notes for v1.5.0, v1.4.20 & v1.4.19",
+                            sublabel = "Release notes for v1.5.2, v1.5.0 & v1.4.20",
                             onClick = { showWhatsNewDialog = true }
                         )
 
@@ -821,6 +833,128 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
+
+        if (showMutedKeywordsDialog) {
+            AlertDialog(
+                onDismissRequest = { showMutedKeywordsDialog = false },
+                containerColor = colors.bg,
+                titleContentColor = colors.ink,
+                textContentColor = colors.mute,
+                shape = RoundedCornerShape(22.dp),
+                title = {
+                    Text(
+                        text = "Muted Keywords",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.ink
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Stories containing any of these words in their title or summary will be hidden from Home.",
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp,
+                            color = colors.mute
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .border(1.dp, colors.line, RoundedCornerShape(12.dp))
+                                    .background(colors.card)
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                if (newKeywordInput.isEmpty()) {
+                                    Text("Add keyword…", color = colors.mute, fontSize = 14.sp)
+                                }
+                                BasicTextField(
+                                    value = newKeywordInput,
+                                    onValueChange = { newKeywordInput = it },
+                                    textStyle = TextStyle(color = colors.ink, fontSize = 14.sp),
+                                    cursorBrush = SolidColor(colors.ink),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(colors.ink)
+                                    .clickable {
+                                        if (newKeywordInput.isNotBlank()) {
+                                            haptics.tick()
+                                            settingsManager.addMutedKeyword(newKeywordInput)
+                                            newKeywordInput = ""
+                                        }
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
+                                Text("Add", color = colors.bg, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+
+                        if (settings.mutedKeywords.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 200.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                settings.mutedKeywords.forEach { kw ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(colors.card)
+                                            .border(1.dp, colors.line, RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = kw,
+                                            color = colors.ink,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            text = "✕",
+                                            color = colors.mute,
+                                            fontSize = 13.sp,
+                                            modifier = Modifier
+                                                .clickable {
+                                                    haptics.tick()
+                                                    settingsManager.removeMutedKeyword(kw)
+                                                }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Text(
+                        text = "Done",
+                        color = colors.ink,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showMutedKeywordsDialog = false }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+            )
         }
 
         if (showOpenLinksDialog) {

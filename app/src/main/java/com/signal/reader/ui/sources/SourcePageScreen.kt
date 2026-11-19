@@ -34,8 +34,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -95,9 +99,12 @@ fun SourcePageScreen(
     val coroutineScope = rememberCoroutineScope()
 
     val source by repository.getSourceByIdFlow(sourceId).collectAsState(initial = null)
+    val allFollowedSources by repository.getFollowedSourcesFlow().collectAsState(initial = emptyList())
     val articles by repository.getArticlesBySourceFlow(sourceId).collectAsState(initial = emptyList())
 
     var showUnfollowConfirm by remember { mutableStateOf(false) }
+    var showFolderDialog by remember { mutableStateOf(false) }
+    var customFolderInput by remember { mutableStateOf("") }
     var statusNote by remember { mutableStateOf<String?>(null) }
     var isRetrying by remember { mutableStateOf(false) }
 
@@ -594,6 +601,15 @@ fun SourcePageScreen(
                         value = if (articles.isNotEmpty()) TimeUtils.formatRelativeTime(articles.first().publishedTime) else "None"
                     )
                     FactRow(
+                        label = "Folder",
+                        value = currentSource.folder.ifBlank { "None (tap to assign)" },
+                        isLink = true,
+                        onClick = {
+                            customFolderInput = currentSource.folder
+                            showFolderDialog = true
+                        }
+                    )
+                    FactRow(
                         label = "Website",
                         value = "${currentSource.siteUrl.removePrefix("https://").removePrefix("http://").removePrefix("www.").take(24)} ↗",
                         isLink = true,
@@ -656,6 +672,136 @@ fun SourcePageScreen(
                 Spacer(modifier = Modifier.height(36.dp))
             }
         }
+        }
+
+        if (showFolderDialog && currentSource != null) {
+            val presetFolders = remember(allFollowedSources) {
+                (listOf("Design", "Tech", "Culture", "Architecture", "News") +
+                    allFollowedSources.map { it.folder.trim() }.filter { it.isNotBlank() })
+                    .distinct()
+            }
+            AlertDialog(
+                onDismissRequest = { showFolderDialog = false },
+                containerColor = colors.bg,
+                titleContentColor = colors.ink,
+                textContentColor = colors.mute,
+                shape = RoundedCornerShape(22.dp),
+                title = {
+                    Text(
+                        text = "Assign Folder",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.ink
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Group ${currentSource.name} into a folder to filter your Home feed by topic.",
+                            fontSize = 13.sp,
+                            color = colors.mute,
+                            lineHeight = 18.sp
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, colors.line, RoundedCornerShape(12.dp))
+                                .background(colors.card)
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            if (customFolderInput.isEmpty()) {
+                                Text("Type a folder name…", color = colors.mute, fontSize = 14.sp)
+                            }
+                            BasicTextField(
+                                value = customFolderInput,
+                                onValueChange = { customFolderInput = it },
+                                textStyle = TextStyle(color = colors.ink, fontSize = 14.sp),
+                                cursorBrush = SolidColor(colors.ink),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        // Quick folder suggestions
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            presetFolders.chunked(3).forEach { rowItems ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    rowItems.forEach { folderName ->
+                                        val selected = customFolderInput.equals(folderName, ignoreCase = true)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .background(if (selected) colors.ink else colors.card)
+                                                .border(1.dp, if (selected) colors.ink else colors.line, CircleShape)
+                                                .clickable { customFolderInput = folderName }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = folderName,
+                                                color = if (selected) colors.bg else colors.ink,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Text(
+                        text = "Save",
+                        color = colors.ink,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                coroutineScope.launch {
+                                    repository.setSourceFolder(currentSource.id, customFolderInput.trim())
+                                    statusNote = if (customFolderInput.isBlank()) {
+                                        "Removed from folder."
+                                    } else {
+                                        "Added to folder “${customFolderInput.trim()}”."
+                                    }
+                                    showFolderDialog = false
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                },
+                dismissButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (currentSource.folder.isNotBlank()) {
+                            Text(
+                                text = "Remove",
+                                color = colors.accent,
+                                fontSize = 14.sp,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        coroutineScope.launch {
+                                            repository.setSourceFolder(currentSource.id, "")
+                                            statusNote = "Removed from folder."
+                                            showFolderDialog = false
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                            )
+                        }
+                        Text(
+                            text = "Cancel",
+                            color = colors.mute,
+                            fontSize = 14.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showFolderDialog = false }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            )
         }
     }
 }

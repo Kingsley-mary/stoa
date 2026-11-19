@@ -1,6 +1,14 @@
 package com.signal.reader.ui.components
 
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.core.content.FileProvider
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -33,7 +41,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.URL
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,7 +87,10 @@ fun ImageViewerDialog(
 ) {
     if (images.isEmpty()) return
 
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val haptics = rememberSignalHaptics()
+    var isSavingImage by remember { mutableStateOf(false) }
     val pagerState = rememberPagerState(
         initialPage = initialIndex.coerceIn(0, images.size - 1),
         pageCount = { images.size }
@@ -157,27 +175,89 @@ fun ImageViewerDialog(
                         Spacer(modifier = Modifier.size(38.dp))
                     }
 
-                    // Dismiss "✕" Button
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.15f))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                haptics.tick()
-                                onDismiss()
-                            },
-                        contentAlignment = Alignment.Center
+                    // Action pills: Save, Share, Dismiss "✕"
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "✕",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        val activeImageUrl = images.getOrNull(pagerState.currentPage)?.url.orEmpty()
+
+                        // Save to Photos
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .clickable(enabled = !isSavingImage && activeImageUrl.isNotBlank()) {
+                                    haptics.tick()
+                                    isSavingImage = true
+                                    coroutineScope.launch {
+                                        val ok = saveImageToGallery(context, activeImageUrl)
+                                        isSavingImage = false
+                                        Toast.makeText(
+                                            context,
+                                            if (ok) "Saved to Photos" else "Could not save image",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                                .padding(horizontal = 13.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (isSavingImage) "…" else "Save",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        // Share image
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .clickable(enabled = activeImageUrl.isNotBlank()) {
+                                    haptics.tick()
+                                    coroutineScope.launch {
+                                        val ok = shareImageFromUrl(context, activeImageUrl)
+                                        if (!ok) {
+                                            Toast.makeText(context, "Could not share image", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                                .padding(horizontal = 13.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Share",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        // Dismiss "✕" Button
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    haptics.tick()
+                                    onDismiss()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "✕",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -333,5 +413,85 @@ private fun ZoomableImageItem(
                 ),
             contentScale = ContentScale.Fit
         )
+    }
+}
+
+private suspend fun fetchImageBytes(imageUrl: String): Pair<ByteArray, String>? = withContext(Dispatchers.IO) {
+    try {
+        val conn = URL(imageUrl).openConnection().apply {
+            setRequestProperty(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+            )
+            connectTimeout = 12_000
+            readTimeout = 15_000
+        }
+        val contentType = conn.contentType?.substringBefore(";")?.trim()?.lowercase() ?: "image/jpeg"
+        val bytes = conn.getInputStream().use { it.readBytes() }
+        if (bytes.isEmpty()) null else Pair(bytes, contentType)
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private suspend fun saveImageToGallery(context: Context, imageUrl: String): Boolean = withContext(Dispatchers.IO) {
+    val fetched = fetchImageBytes(imageUrl) ?: return@withContext false
+    val (bytes, mime) = fetched
+    val ext = when {
+        mime.contains("png") -> "png"
+        mime.contains("webp") -> "webp"
+        mime.contains("gif") -> "gif"
+        else -> "jpg"
+    }
+    val fileName = "stoa_${System.currentTimeMillis()}.$ext"
+    try {
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+            put(MediaStore.Images.Media.MIME_TYPE, mime)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Stoa")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: return@withContext false
+        context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            context.contentResolver.update(uri, values, null, null)
+        }
+        true
+    } catch (_: Exception) {
+        false
+    }
+}
+
+private suspend fun shareImageFromUrl(context: Context, imageUrl: String): Boolean = withContext(Dispatchers.IO) {
+    val fetched = fetchImageBytes(imageUrl) ?: return@withContext false
+    val (bytes, mime) = fetched
+    val ext = when {
+        mime.contains("png") -> "png"
+        mime.contains("webp") -> "webp"
+        mime.contains("gif") -> "gif"
+        else -> "jpg"
+    }
+    try {
+        val shareDir = File(context.cacheDir, "shared_images").apply { mkdirs() }
+        val file = File(shareDir, "stoa_share_${System.currentTimeMillis()}.$ext")
+        file.writeBytes(bytes)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mime
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        withContext(Dispatchers.Main) {
+            context.startActivity(Intent.createChooser(intent, "Share image"))
+        }
+        true
+    } catch (_: Exception) {
+        false
     }
 }

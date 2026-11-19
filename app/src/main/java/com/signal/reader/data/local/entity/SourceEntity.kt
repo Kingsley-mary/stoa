@@ -27,5 +27,6 @@ data class SourceEntity(
     val notificationsEnabled: Boolean = true,
     val etag: String? = null,
     val lastModified: String? = null,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    val folder: String = ""
 )

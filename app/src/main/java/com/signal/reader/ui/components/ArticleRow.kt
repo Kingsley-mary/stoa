@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -98,16 +99,17 @@ fun ArticleRow(
         label = "underlayContent"
     )
 
-    val thresholdPx = 90f * 2.5f
-    val resistanceLimit = 110f * 2.5f
+    val density = LocalDensity.current
+    val thresholdPx = with(density) { 88.dp.toPx() }
+    val resistanceLimit = with(density) { 112.dp.toPx() }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(underlayBg)
+            .background(if (offsetX.value != 0f) underlayBg else colors.bg)
     ) {
         // Left Underlay (shown when swiping right): reveals Save / Unsave bookmark
-        if (offsetX.value >= 0f) {
+        if (offsetX.value > 1f) {
             Row(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
@@ -132,7 +134,7 @@ fun ArticleRow(
         }
 
         // Right Underlay (shown when swiping left): reveals Mark read / Mark unread
-        if (offsetX.value < 0f) {
+        if (offsetX.value < -1f) {
             Row(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)

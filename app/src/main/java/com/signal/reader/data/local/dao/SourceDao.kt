@@ -69,6 +69,9 @@ interface SourceDao {
     @Query("UPDATE sources SET isPinned = :pinned WHERE id = :id")
     suspend fun setPinned(id: Long, pinned: Boolean)
 
+    @Query("UPDATE sources SET folder = :folder WHERE id = :id")
+    suspend fun setFolder(id: Long, folder: String)
+
     @Query("""
         UPDATE sources 
         SET lastFetched = :timestamp, 

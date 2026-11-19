@@ -37,8 +37,30 @@ data class ReleaseNote(
 
 val STOA_RECENT_RELEASES = listOf(
     ReleaseNote(
-        version = "v1.5.0",
+        version = "v1.5.2",
         isCurrent = true,
+        summary = "Inline Swipeable Galleries, Smart Mark-as-Read, Resume Reading, Folders, Muted Keywords, In-Article Highlights, TOC Jump & Bug Fixes",
+        markdownNotes = """
+### New Features
+- **Inline Swipeable Galleries**: Whenever 3 or more consecutive photos appear without text between them, Stoa automatically collapses them into a clean swipeable inline carousel with a `1 / N` counter, adaptive dots/progress indicator, live captions, and tap-to-lightbox zoom.
+- **Smart Mark-as-Read**: Opening an article and immediately backing out no longer marks it as read — Stoa now marks stories read once you scroll past 35% or actively spend time reading.
+- **Save & Share Images from Lightbox**: Download any photo directly to your device gallery (`Pictures/Stoa`) or share it straight from the fullscreen image viewer.
+- **Resume Reading Position**: Leaving a long-form story mid-way saves your exact scroll position so you pick up right where you left off.
+- **Custom Folders on Home**: Group publications into topic folders (e.g., *Design*, *Tech*, *Culture*) from any Source page and filter your Home stream by folder.
+- **Muted Keywords**: Hide stories containing specific keywords from your Home stream via **Settings → Home → Muted keywords**.
+- **Table of Contents Jump Pill**: Articles with 3+ headings now display an outline button (`≡`) in the Reader bar to jump straight to any section.
+- **In-Article Highlight Tinting**: Passages you highlight are now visually tinted right inside the article text as well as saved in **Saved → Highlights**.
+
+### Bug Fixes
+- **No More Double Audio Bars**: Opening another story while listening to an article no longer stacks the Reader Audio Dock on top of the Mini Audio Bar.
+- **Mini Audio Bar Gesture Insets**: Added proper navigation-bar inset padding when the bottom tab bar is hidden.
+- **TTS Skip & Focus Fixes**: Guarded `onDone` against stale utterance double-skips and requested AudioFocus when skipping sentences.
+- **Density-Aware Swipe & Hero Dedup**: Fixed hardcoded swipe thresholds on high-DPI phones, skipped drawing hidden row underlays at rest, and normalized hero image deduplication across CDN query variants.
+""".trimIndent()
+    ),
+    ReleaseNote(
+        version = "v1.5.0",
+        isCurrent = false,
         summary = "Highlights & Clippings, Persistent Mini Audio Player, Bidirectional Swipes, Pinned Sources, Feed Repair, HTTP Conditional Sync & Database Protection",
         markdownNotes = """
 ### New Features & Reading Upgrades

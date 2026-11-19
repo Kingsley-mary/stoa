@@ -653,6 +653,14 @@ class FeedRepository(
         } catch (_: Exception) {}
     }
 
+    suspend fun updateReadingPosition(articleId: Long, index: Int, offset: Int) = withContext(Dispatchers.IO) {
+        articleDao.updateReadingPosition(articleId, index.coerceAtLeast(0), offset.coerceAtLeast(0))
+    }
+
+    suspend fun setSourceFolder(sourceId: Long, folder: String) = withContext(Dispatchers.IO) {
+        sourceDao.setFolder(sourceId, folder.trim())
+    }
+
     suspend fun pruneOldUnsavedArticles(): Int = withContext(Dispatchers.IO) {
         val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30)
         // Keep at least the 15 most recent articles for every source so slow/dormant feeds are never wiped out

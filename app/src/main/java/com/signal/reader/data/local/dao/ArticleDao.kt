@@ -22,7 +22,7 @@ interface ArticleDao {
                CASE WHEN a.fullContent IS NOT NULL AND LENGTH(a.fullContent) > 2500
                     THEN SUBSTR(a.fullContent, 1, 2500)
                     ELSE a.fullContent END AS fullContent,
-               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url
+               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url, a.lastScrollIndex, a.lastScrollOffset
         FROM articles a
         INNER JOIN sources s ON a.sourceId = s.id
         WHERE s.followed = 1 AND s.muted = 0
@@ -36,7 +36,7 @@ interface ArticleDao {
                CASE WHEN a.fullContent IS NOT NULL AND LENGTH(a.fullContent) > 2500
                     THEN SUBSTR(a.fullContent, 1, 2500)
                     ELSE a.fullContent END AS fullContent,
-               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url
+               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url, a.lastScrollIndex, a.lastScrollOffset
         FROM articles a
         WHERE a.sourceId = :sourceId
         ORDER BY a.publishedTime DESC
@@ -49,7 +49,7 @@ interface ArticleDao {
                CASE WHEN a.fullContent IS NOT NULL AND LENGTH(a.fullContent) > 2500
                     THEN SUBSTR(a.fullContent, 1, 2500)
                     ELSE a.fullContent END AS fullContent,
-               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url
+               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url, a.lastScrollIndex, a.lastScrollOffset
         FROM articles a
         WHERE a.saved = 1
         ORDER BY a.savedTime DESC, a.publishedTime DESC
@@ -86,6 +86,9 @@ interface ArticleDao {
 
     @Query("UPDATE articles SET read = :read WHERE id = :id")
     suspend fun setRead(id: Long, read: Boolean)
+
+    @Query("UPDATE articles SET lastScrollIndex = :index, lastScrollOffset = :offset WHERE id = :id")
+    suspend fun updateReadingPosition(id: Long, index: Int, offset: Int)
 
     @Query("UPDATE articles SET imageUrl = :imageUrl WHERE id = :id")
     suspend fun updateImageUrl(id: Long, imageUrl: String)
@@ -162,7 +165,7 @@ interface ArticleDao {
                CASE WHEN a.fullContent IS NOT NULL AND LENGTH(a.fullContent) > 4000
                     THEN SUBSTR(a.fullContent, 1, 4000)
                     ELSE a.fullContent END AS fullContent,
-               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url
+               a.isExcerptOnly, a.imageUrl, a.author, a.publishedTime, a.read, a.saved, a.savedTime, a.url, a.lastScrollIndex, a.lastScrollOffset
         FROM articles a
         LEFT JOIN sources s ON a.sourceId = s.id
         WHERE (s.followed = 1 OR a.saved = 1)
